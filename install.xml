@@ -6,10 +6,10 @@
 	<importmodule>Plugins::Qobuz::Importer</importmodule>
 	<onlineLibrary>true</onlineLibrary>
 
-	<version>2.0.0</version>
+	<version>12.1.0</version>
 	<description>PLUGIN_QOBUZ_DESC</description>
-	<creator>Pierre Beck / Michael Herger</creator>
-	<email>slim@herger.net</email>
+	<creator>Pierre Beck / Michael Herger / SvenInNdh</creator>
+	<email>sveninndh@gmail.com</email>
 	<defaultState>enabled</defaultState>
 	<icon>plugins/Qobuz/html/images/qobuz.png</icon>
 	<optionsURL>plugins/Qobuz/settings/basic.html</optionsURL>
