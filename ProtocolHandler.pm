@@ -1,5 +1,7 @@
 package Plugins::Qobuz::ProtocolHandler;
 
+#Sven 2020-04-04 enhancements based on version 1.400 up to 2.000
+
 # Handler for qobuz:// URLs
 
 use strict;
@@ -53,7 +55,8 @@ sub getSeekData {
 	my $url = $song->currentTrack()->url() || return;
 
 	my ($id, $type) = $class->crackUrl($url);
-
+	
+#Sven 2019-03-28 allows seeking in flac files, see also parseDirectHeaders()	
 	my $bitrate = $type eq 'mp3' ? MP3_BITRATE : $song->bitrate();
 
 	return unless $bitrate;
@@ -124,7 +127,7 @@ sub parseDirectHeaders {
 		if ( $header =~ /^Content-Length:\s*(.*)/i ) {
 			$length = $1;
 		}
-		# allows seeking in flac files, see getSeekData()
+		#Sven 2019-03-29 allows seeking in flac files, see getSeekData()
 		elsif ( $header =~ /^Content-Range:.*\/+(.*)/i ) {
 			$length = $1;
 		}
@@ -148,7 +151,7 @@ sub parseDirectHeaders {
 	$song->duration($duration);
 
 	if ($length && $contentType eq 'flc') {
-		$bitrate = $length*8 / $duration if $duration;
+		$bitrate = $length*8 / $duration if $duration; #Sven 2019-03-29
 		$song->bitrate($bitrate) if $bitrate;
 	}
 
@@ -194,6 +197,7 @@ sub getMetadataFor {
 
 	if ($meta->{type} ne 'mp3' && $client && $client->playingSong && $client->playingSong->track->url eq $url) {
 		$meta->{bitrate} = $client->playingSong->bitrate if $client->playingSong->bitrate;
+		#Sven 20190323 allows displaying samplerate and samplesize in 'More Info' menu
 		$meta->{samplerate} = $client->playingSong->pluginData('samplerate');
 		$meta->{samplesize} = $client->playingSong->pluginData('samplesize');
 	}
@@ -225,6 +229,7 @@ sub getNextTrack {
 		if ($streamData) {
 			$song->pluginData(mime => $streamData->{mime_type});
 
+			#Sven 20190323 allows displaying samplerate and samplesize in 'More Info' menu
 			$song->pluginData(samplesize => $streamData->{bit_depth});
 			$song->pluginData(samplerate => $streamData->{sampling_rate});
 

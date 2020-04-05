@@ -133,8 +133,12 @@ sub search {
 	}, $args);
 }
 
+#Sven 2020-03-30
 sub getArtist {
-	my ($class, $cb, $artistId) = @_;
+	my ($class, $cb, $artistId, $noextra) = @_;
+	my $args = { artist_id => $artistId };
+	
+	if (! $noextra) { $args->{extra} = 'albums'; $args->{limit} = QOBUZ_DEFAULT_LIMIT; }
 
 	_get('artist/get', sub {
 		my $results = shift;
@@ -149,11 +153,7 @@ sub getArtist {
 		$results->{albums}->{items} = _precacheAlbum($results->{albums}->{items}) if $results->{albums};
 
 		$cb->($results) if $cb;
-	}, {
-		artist_id => $artistId,
-		extra     => 'albums',
-		limit     => QOBUZ_DEFAULT_LIMIT,
-	});
+	}, $args);
 }
 
 sub getArtistPicture {
@@ -616,7 +616,7 @@ sub _lookupArtistPicture {
 	}
 	else {
 		$artistLookup = 1;
-		__PACKAGE__->getArtist(\&_lookupArtistPicture, shift @artistsToLookUp);
+		__PACKAGE__->getArtist(\&_lookupArtistPicture, shift @artistsToLookUp, 1); #Sven 2020-03-30
 	}
 }
 
@@ -688,6 +688,8 @@ sub _get {
 	if ($params->{_wipecache}) {
 		$cache->remove($url);
 	}
+	
+#	$log->error('_Get(' . $url);
 
 	if (!$params->{_nocache} && (my $cached = $cache->get($url))) {
 		main::DEBUGLOG && $log->is_debug && $log->debug("found cached response: " . Data::Dump::dump($cached));
