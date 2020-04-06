@@ -1,6 +1,6 @@
 package Plugins::Qobuz::Plugin;
 
-#Sven 2020-03-18 enhancements based on version 1.400 up to 1.600
+#Sven 2020-03-18 enhancements based on version 1.400 up to 2.1.0
 # 1. included a new album information menu befor playing the album
 #	 It shows: Samplesize, Samplerate, Genre, Duration, Description if present, Goodies (Booklet) if present,
 #	 Trackcount, Trackdetails including performers, Conductor if present, Artist, Composer, ReleaseDate, Label,
@@ -11,15 +11,17 @@ package Plugins::Qobuz::Plugin;
 # 5. added seeking inside flac files while playing
 # 6. added new preference 'FLAC 24 bits / 96 kHz (Hi-Res)'
 # 7. my prefered menu order in main menu
+# 8. added "Album Information" if MusicArtistInfo plugin is installed.
+# 9. added "Artist Information" if MusicArtistInfo plugin is installed.
 #
 # all changes are marked with "#Sven" in source code
 # changed files: Plugin.pm, ProtocolHandler.pm, strings.txt
 # changes in API.pm and basic.html from .../Qobuz/HTML/EN/plugins/Qobuz/settings/basic.html are included since 1.525
 
 =head Infos
-Mit dem Wert type => 'link' wird erhält eine Liste mit Symbolen die Option "Anzeige umschalten"
-Mit dem Wert type => 'playlist' wird erhält eine Liste mit Symbolen die Option "Anzeige umschalten" und es wird das "ADD"- und "PLAY"-Symbol angezeigt.
-Es sollte daher nur für Tracklisten (Album, Tracks und Playlists) verwendet werden.
+With the value type => 'link' a list with symbols gets the option "Toggle View"
+With the value type => 'playlist' a list with symbols gets the option "Toggle View" and the "ADD" and "PLAY" buttons are displayed.
+It should therefore only be used for track lists (album, tracks and playlists).
 =cut
 
 use strict;
@@ -189,6 +191,10 @@ sub postinitPlugin {
 	}
 	
 	if ( Slim::Utils::PluginManager->isEnabled('Plugins::MusicArtistInfo::Plugin') ) {
+		eval {
+			require Plugins::MusicArtistInfo::AlbumInfo;
+			require Plugins::MusicArtistInfo::ArtistInfo;
+		};
 		$IsMusicArtistInfo = 1;
 	}
 
@@ -612,7 +618,8 @@ sub QobuzArtist {
 				name  => cstring($client, 'PLUGIN_MUSICARTISTINFO_ARTISTINFO'),
 				image => 'html/images/artists.png',
 				type  => 'link',
-				items => Plugins::MusicArtistInfo::ArtistInfo->getArtistMenu(undef, { artist => $artist->{name}, client => $client })
+				#use ArtistInfo::getArtistMenu() and not ArtistInfo::getArtistMenu() to pass $client as first parameter. 
+				items => Plugins::MusicArtistInfo::ArtistInfo::getArtistMenu($client, undef, { artist => $artist->{name} })
 			}
 		}		
 
@@ -1105,8 +1112,8 @@ sub QobuzAlbumMenu {
 		
 #Page starts here	
 
-#Die Playlist darf nicht am Anfang stehen, da sonst die add/play-Buttons oben angezeigt werden, diese haben aber hier keine Funktion haben.
-#Deshalb wird in der ersten Zeile zuerst das Genre angezeigt.
+#The playlist must not be at the beginning, otherwise the add/play buttons are displayed at the top, but they have no function here.
+#Therefore the genre is displayed first in the first line.
 
 		push @$items, {
 			name  => $album->{genre},
@@ -1197,8 +1204,9 @@ sub QobuzAlbumMenu {
 		if ($IsMusicArtistInfo) {
 			push @$items, {
 				name  => cstring($client, 'PLUGIN_MUSICARTISTINFO_ALBUMINFO'),
-				items => Plugins::MusicArtistInfo::AlbumInfo->getAlbumMenu(undef, { album => { album => $album->{title}, artist => $artist, client => $client } })
-			}
+				#use AlbumInfo::getAlbumMenu() and not AlbumInfo->getAlbumMenu() to pass $client as first parameter. 
+				items => Plugins::MusicArtistInfo::AlbumInfo::getAlbumMenu($client, undef, { album => { album => $album->{title}, artist => $artist } })
+			};	
 		}
 		
 #Sven 2020-03-30
