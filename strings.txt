@@ -39,6 +39,10 @@ PLUGIN_QOBUZ_SUB_GENRES
 	EN	Subgenres
 	FR	Sous-genres
 
+PLUGIN_QOBUZ_ALBUM_PICKS
+	DE	Album Auswahl
+	EN	Album Picks
+
 PLUGIN_QOBUZ_BESTSELLERS
 	EN	Bestsellers
 	FR	Meilleures Ventes
@@ -64,7 +68,7 @@ PLUGIN_QOBUZ_USERPURCHASES
 	FR	Mes Achats
 
 PLUGIN_QOBUZ_USERPLAYLISTS
-	DE	Meine Wiedergabelisten
+	DE	Meine Playlisten
 	EN	My Playlists
 	FR	Mes Listes de Lecture
 
@@ -79,14 +83,14 @@ PLUGIN_QOBUZ_MANAGE_FAVORITES
 	FR	Gestion des Favoris
 
 PLUGIN_QOBUZ_ADD_FAVORITE
-	DE	Favorit '%s' erstellen
-	EN	Add '%s' to favorites
-	FR	Ajouter '%s' à mes favoris
+	DE	Füge %s den Favoriten hinzu
+	EN	Add %s to favorites
+	FR	Ajouter %s à mes favoris
 
 PLUGIN_QOBUZ_REMOVE_FAVORITE
-	DE	Entferne '%s' aus Favoriten
-	EN	Remove '%s' from favorites
-	FR	Retirer '%s' des favoris
+	DE	Entferne %s aus Favoriten
+	EN	Remove %s from favorites
+	FR	Retirer %s des favoris
 
 PLUGIN_QOBUZ_SEARCH
 	DE	Suche '%s'
@@ -94,12 +98,12 @@ PLUGIN_QOBUZ_SEARCH
 	FR	Rechercher '%s'
 
 PLUGIN_QOBUZ_PUBLICPLAYLISTS
-	DE	Qobuz Wiedergabelisten
+	DE	Qobuz Playlisten
 	EN	Qobuz Playlists
 	FR	Listes de Lecture Qobuz
 
 PLUGIN_QOBUZ_LATESTPLAYLISTS
-	DE	Benutzer Wiedergabelisten
+	DE	Benutzer Playlisten
 	EN	User Playlists
 	FR	Listes de Lecture d'utilisateurs
 
@@ -127,6 +131,16 @@ PLUGIN_QOBUZ_SIMILAR_ARTISTS
 	DE	Ähnliche Interpreten
 	EN	Similar Artists
 	FR	Artistes similaires
+	
+PLUGIN_QOBUZ_FILTER_SEARCH
+	DE	Suchresultate filtern
+	EN	Filter search results
+	FR	Trier les résultats des recherches
+
+PLUGIN_QOBUZ_FILTER_SEARCH_DESC
+	DE	Qobuz Suchresultate sind leider häufig unübersichtlich und unlogisch sortiert. Das Plugin kann versuchen, dies zu verbessern. Allerdings kann dies auf langsamen Servern die Antwortzeit verlängern.
+	EN	Qobuz search results often are confusing and poorly sorted. This plugin can try to improve the situation. But this comes at a cost: on slower systems you might experience a performance hit.
+	FR	Les recherches sur Qobuz souvent rendent des listes assez troublantes. Cette extension essaye d'améliorer la situations. Sur des systèmes peu performants ce processus peut ralentir le service.
 
 PLUGIN_QOBUZ_BY_WORK
 	DE	Nach Werk gruppiert
@@ -136,10 +150,12 @@ PLUGIN_QOBUZ_BY_WORK
 PLUGIN_QOBUZ_IMPORT
 	DE	Musiksammlungsintegration
 	EN	Music Library Integration
+	FR	Intégration de la bibliothèque musicale
 
 PLUGIN_QOBUZ_DONT_IMPORT_PURCHASES
 	DE	Gekaufte Alben nicht importieren. Wählen Sie diese Option, falls Sie die Einkäufe sowieso schon heruntergeladen haben.
 	EN	Don't import purchased albums. Check this option if you've downloaded your purchases anyway.
+	FR	Ne pas importer les albums achetés. Cochez cette option si vous avez déjà téléchargé vos musiques achetées.
 
 PLUGIN_QOBUZ_PLAY_SAMPLES
 	DE	Hörproben wiedergeben
@@ -165,23 +181,86 @@ PLUGIN_QOBUZ_BOOKLET
 	EN	Booklet
 	FR	Livret
 
+PLUGIN_QOBUZ_PERFORMERS
+	DE	Performer
+	EN	Performers
+
 PLUGIN_QOBUZ_SHOW_COMPOSER_WITH_ARTIST
 	DE	Komponisten mit Interpret anzeigen
 	EN	Show Composer with Artist
 	FR	Afficher le compositeur avec l'interprète
 
 PLUGIN_QOBUZ_HIRES
-	EN	Hi-Res
+	EN	(HiRes)
+
+PLUGIN_QOBUZ_PLAY_PLAYLIST
+	DE	Play/Playliste
+	EN	Play/Playlist
 
 PLUGIN_QOBUZ_RELEASED_AT
-	DE	Erschienen am
-	EN	Released at
+	DE	Veröffentlicht
+	EN	Released
 	FR	Sortie le
+
+PLUGIN_QOBUZ_ORIGINAL_RELEASED_AT
+	DE	ursprünglich
+	EN	originally	
 
 PLUGIN_QOBUZ_LABEL
 	DE	Musiklabel
 	EN	Music Label
 	FR	Label
+
+PLUGIN_QOBUZ_TRACKS_DETAILS
+	DE	Titeldetails
+	EN	Tracks details
+
+PLUGIN_QOBUZ_TRACKS
+	DE	Titel
+	EN	Tracks
+
+PLUGIN_QOBUZ_RECENT_RELEASES
+	DE	Neuerscheinungen
+	EN	Recent releases
+
+PLUGIN_QOBUZ_NEW_RELEASES
+	DE	Neuveröffentlichungen
+	EN	New Releases
+	FR	Nouveautés
+
+PLUGIN_QOBUZ_NEW_RELEASES_FULL
+	DE	Alle Neuveröffentlichungen
+	EN	All new Releases	
+
+PLUGIN_QOBUZ_PRESS
+	DE	In der Presse
+	EN	In the Press
+	FR	Vu dans la Presse
+
+PLUGIN_QOBUZ_EDITOR_PICKS
+	DE	Qobuz Auswahl
+	EN	Qobuz Selection
+	FR	Sélection Qobuz
+
+PLUGIN_QOBUZ_QOBUZISSIMS
+	DE	Qobuzissime
+	EN	Qobuzissims
+
+PLUGIN_QOBUZ_BESTSELLERS
+	EN	Bestsellers
+	FR	Meilleures Ventes
+
+PLUGIN_QOBUZ_MOST_STREAMED
+	DE	Am meisten gestreamt
+	EN	Most streamed
+
+PLUGIN_QOBUZ_MOST_FEATURED
+	DE	Am meisten genannt
+	EN	Most featured
+
+PLUGIN_QOBUZ_IDEAL_DISCOGRAPHY
+	DE	Die ideale Diskographie
+	EN	Ideal discography
 
 PLUGIN_QOBUZ_AWARDS
 	DE	Auszeichnungen

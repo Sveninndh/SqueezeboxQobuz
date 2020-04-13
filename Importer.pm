@@ -143,12 +143,16 @@ sub scanArtists {
 		$progress->update($name);
 		main::SCANNER && Slim::Schema->forceCommit;
 
-		Slim::Schema->rs('Contributor')->update_or_create({
-			'name'       => $name,
-			'namesort'   => Slim::Utils::Text::ignoreCaseArticles($name),
-			'namesearch' => Slim::Utils::Text::ignoreCase($name, 1),
-			'extid'      => 'qobuz:artist:' . $artist->{id},
-		}, { 'key' => 'namesearch' });
+#		Slim::Schema->rs('Contributor')->update_or_create({
+#			'name'       => $name,
+#			'namesort'   => Slim::Utils::Text::ignoreCaseArticles($name),
+#			'namesearch' => Slim::Utils::Text::ignoreCase($name, 1),
+#			'extid'      => 'qobuz:artist:' . $artist->{id},
+#		}, { 'key' => 'namesearch' });
+		Slim::Schema::Contributor->add({
+			'artist' => $name,
+			'extid'  => 'qobuz:artist:' . $artist->{id},
+		});
 	}
 
 	$progress->final();
