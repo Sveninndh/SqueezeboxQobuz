@@ -1,4 +1,6 @@
 package Plugins::Qobuz::Settings;
+#Sven 2023-10-10 enhancements Version 20.16.10
+# All changes are marked with "#Sven" in source code
 
 use strict;
 use Digest::MD5 qw(md5_hex);
@@ -19,10 +21,11 @@ sub page {
 	return Slim::Web::HTTP::CSRF->protectURI('plugins/Qobuz/settings/basic.html');
 }
 
+#Sven 2024-01-11
 sub prefs {
 	return ($prefs, 'filterSearchResults', 'playSamples', 'showComposerWithArtist', 'labelHiResAlbums', 'dontImportPurchases',
 			'appendVersionToTitle', 'sortFavsAlphabetically', 'sortArtistAlbums', 'showYearWithAlbum', 'useClassicalEnhancements',
-			'classicalGenres', 'workPlaylistPosition', 'parentalWarning', 'showDiscs', 'preferredFormat');
+			'classicalGenres', 'workPlaylistPosition', 'parentalWarning', 'showDiscs', 'preferredFormat', 'sortUserPlaylists', 'showUserPurchases');
 }
 
 sub handler {

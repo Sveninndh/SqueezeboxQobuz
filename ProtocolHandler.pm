@@ -1,9 +1,14 @@
 package Plugins::Qobuz::ProtocolHandler;
 
+#Sven 2024-01-27 Version 30.1.0
+#Sven 2022-05-06 support of https
+#Sven 2022-05-17 correction for playing Qobuz album favorites from LMS favorites
+#Sven 2022-05-16 needed since 2.5.1 because of subscribe/unsubscribe playlists
+#Sven 2023-10-28 for URL handlers to get the track icon without having a client.
 # Handler for qobuz:// URLs
 
 use strict;
-use base qw(Slim::Player::Protocols::HTTPS);
+use base qw(Slim::Player::Protocols::HTTPS); 
 use Scalar::Util qw(blessed);
 use Text::Unidecode;
 
@@ -19,7 +24,7 @@ use Plugins::Qobuz::Reporting;
 use constant MP3_BITRATE => 320_000;
 use constant CAN_FLAC_SEEK => (Slim::Utils::Versions->compareVersions($::VERSION, '8.0.0') >= 0 && UNIVERSAL::can('Slim::Utils::Scanner::Remote', 'parseFlacHeader'));
 
-use constant PAGE_URL_REGEXP => qr{(?:open|play)\.qobuz\.com/(.+)/([a-z0-9]+)};
+use constant PAGE_URL_REGEXP => qr{^qobuz:(album:|//playlist:|//)([a-z0-9]+)}; #qr{(?:open|play)\.qobuz\.com/(.+)/([a-z0-9]+)};
 Slim::Player::ProtocolHandlers->registerURLHandler(PAGE_URL_REGEXP, __PACKAGE__) if Slim::Player::ProtocolHandlers->can('registerURLHandler');
 
 my $log   = logger('plugin.qobuz');
@@ -103,6 +108,7 @@ sub getFormatForURL {
 	return Plugins::Qobuz::API::Common->getStreamingFormat();
 }
 
+#Sven 2022-05-27 correction for playing Qobuz album favorites from LMS favorites
 sub explodePlaylist {
 	my ( $class, $client, $url, $cb ) = @_;
 
@@ -113,30 +119,28 @@ sub explodePlaylist {
 		if ($type eq 'track') {
 			$url = "qobuz://$id." . Plugins::Qobuz::API::Common->getStreamingFormat($url);
 		}
-		else {
+		elsif ($type eq 'playlist') { #Sven 2022-05-27
 			$url = "qobuz://$type:$id.qbz";
 		}
 	}
 
-	if ( $url =~ m{^qobuz://(playlist|album)?:?([0-9a-z]+)\.qbz}i ) {
-		my $type = $1;
-		my $id = $2;
+	if ( $url =~ m{^qobuz:(?://)?(playlist|album)?:?([0-9a-z]+)(?:\.qbz)?$}i ) { #Sven 2022-05-27 - ( $url =~ m{^qobuz://(playlist|album)?:?([0-9a-z]+)\.qbz}i )
+		$type = $1;
+		$id   = $2;
 
 		my $getter = $type eq 'album' ? 'getAlbum' : 'getPlaylistTracks';
 
 		Plugins::Qobuz::Plugin::getAPIHandler($client)->$getter(sub {
 			my $response = shift || [];
 
-			my $uris = [];
+			my $uris = { type => 'opml', title => '' }; #Sven 2022-05-27
 
 			if ($response && ref $response && $response->{tracks}) {
-				$uris = {
-					items => [
-						map {
-							Plugins::Qobuz::Plugin::_trackItem($client, $_);
-						} @{$response->{tracks}->{items}}
-					]
-				};
+				$uris->{items} = [
+					map {
+						Plugins::Qobuz::Plugin::_trackItem($client, $_);
+					} @{$response->{tracks}->{items}}
+				];
 			}
 
 			$cb->($uris);
@@ -400,7 +404,7 @@ sub getNextTrack {
 				if (CAN_FLAC_SEEK && $format =~ /fla?c/i) {
 					main::INFOLOG && $log->is_info && $log->info("Getting flac header information for: " . $song->streamUrl);
 					my $http = Slim::Networking::Async::HTTP->new;
-					$http->send_request( {
+					$http->send_request(Plugins::Qobuz::Addon::check({
 						request     => HTTP::Request->new( GET => $song->streamUrl ),
 						onStream    => \&Slim::Utils::Scanner::Remote::parseFlacHeader,
 						onError     => sub {
@@ -409,7 +413,7 @@ sub getNextTrack {
 							$successCb->();
 						},
 						passthrough => [ $song->track, { cb => $successCb }, $song->streamUrl ],
-					} );
+					}, $id, $format, $errorCb));
 				} else {
 					$successCb->();
 				}
@@ -438,6 +442,24 @@ sub crackUrl {
 sub audioScrobblerSource {
 	# Scrobble as 'chosen by user' content
 	return 'P';
+}
+
+#Sven 2023-10-28 for URL handlers to get the track icon without having a client.
+sub getIcon {
+	my ( $class, $url ) = @_;
+
+	my ($id) = $class->crackUrl($url);
+	
+	$id ||= $url;
+	unless ($id =~ /^qobuz:album/) {
+		my $meta = Plugins::Qobuz::API->getTrackInfo(sub {}, $id);
+		
+		if ($meta->{cover} && ref $meta->{cover}) {
+			$meta->{cover} = Plugins::Qobuz::API::Common->getImageFromImagesHash($meta->{cover});
+		}
+		return $meta->{cover};
+	}
+	return '';
 }
 
 1;

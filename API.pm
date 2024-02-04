@@ -1,5 +1,21 @@
 package Plugins::Qobuz::API;
 
+#Sven 2024-01-27 enhancements version 30.1.0
+# All changes are marked with "#Sven" in source code
+# 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
+# 2022-05-12 fix in function getPublicPlaylists()
+# 2022-05-13 added function setFavorite()
+# 2022-05-13 added function getFavoriteStatus()
+# 2022-05-13 add filter parameter for function getUserPlaylists()
+# 2022-05-14 added function doPlaylistCommand()
+# 2022-05-20 added MyWeekly playlist
+# 2022-05-20 new parameter $type for getUserFavorites()
+# 2022-05-23 getAlbum() new parameter 'extra' and one optimisation
+# 2022-05-23 added getLabelAlbums()
+# 2022-05-23 added function getSimilarPlaylists()
+# 2023-10-07 Update of app_id handling
+# 2023-10-09 add sort configuration for function getUserPlaylists()
+
 use strict;
 use base qw(Slim::Utils::Accessor);
 
@@ -195,8 +211,9 @@ sub search {
 	}, $args);
 }
 
+#Sven 2020-03-30 new parameter $noalbums, if it is not undef, getArtist returns no extra album information.
 sub getArtist {
-	my ($self, $cb, $artistId) = @_;
+	my ($self, $cb, $artistId, $noalbums) = @_;
 
 	$self->_get('artist/get', sub {
 		my $results = shift;
@@ -211,7 +228,7 @@ sub getArtist {
 		$results->{albums}->{items} = _precacheAlbum($results->{albums}->{items}) if $results->{albums};
 
 		$cb->($results) if $cb;
-	}, {
+	}, $noalbums ? { artist_id => $artistId } : { #Sven 2020-03-30 new parameter $noalbums
 		artist_id => $artistId,
 		extra     => 'albums',
 		limit     => QOBUZ_DEFAULT_LIMIT,
@@ -252,6 +269,7 @@ sub getGenres {
 	$self->_get('genre/list', $cb, $params);
 }
 
+=head #Sven wird nicht mehr benötigt, der Paramter 'extra' wird der Qobuz-API nicht mehr unterstützt, wurde früher von QobuzGenre aufgerufen, 
 sub getGenre {
 	my ($self, $cb, $genreId) = @_;
 
@@ -261,19 +279,33 @@ sub getGenre {
 		_ttl  => QOBUZ_EDITORIAL_EXPIRY,
 	});
 }
+=cut
 
+#Sven 2022-05-23 neuer Parameter 'extra' und eine Optimierung
 sub getAlbum {
-	my ($self, $cb, $albumId) = @_;
+	my ($self, $cb, $args) = @_;
+	#$args enthält entweder direkt die album_id oder ein Array
+	#mit den Hashwerten album_id und extra
+	#album_id => $albumId,
+	#extra    => 'albumsFromSameArtist', 'focus','focusAll',
+
+	
+	if (! ref $args) { $args = { album_id => $args }; };
 
 	$self->_get('album/get', sub {
 		my $album = shift;
-
-		($album) = @{_precacheAlbum([$album])} if $album;
+		
+		if ($album) {
+			#<Sven 2022-05-23
+			if ($album->{albums_same_artist} && $album->{albums_same_artist}->{items}) {
+				$album->{albums_same_artist}->{items} = _precacheAlbum($album->{albums_same_artist}->{items});
+			}
+			#>Sven
+			($album) = @{_precacheAlbum([$album])};
+		}
 
 		$cb->($album);
-	},{
-		album_id => $albumId,
-	});
+	}, $args);
 }
 
 sub getFeaturedAlbums {
@@ -291,8 +323,31 @@ sub getFeaturedAlbums {
 		my $albums = shift;
 
 		$albums->{albums}->{items} = _precacheAlbum($albums->{albums}->{items}) if $albums->{albums};
-
 		$cb->($albums);
+	}, $args);
+}
+
+#Sven 2022-05-23 add
+sub getLabelAlbums {
+	my ($self, $cb, $labelid) = @_;
+	
+	# extra => 'albums', 'focus', 'focusAll' oder 'albums,focus'
+
+	my $args = {
+		label_id => $labelid,
+		extra    => 'albums',
+		limit    => QOBUZ_DEFAULT_LIMIT,
+		_ttl     => QOBUZ_EDITORIAL_EXPIRY,
+	};
+
+	$self->_get('label/get', sub {
+		my $label = shift;
+		
+		#$log->error(Data::Dump::dump($label));
+
+		$label->{albums}->{items} = _precacheAlbum($label->{albums}->{items}) if $label->{albums};
+
+		$cb->($label);
 	}, $args);
 }
 
@@ -332,7 +387,6 @@ sub checkPurchase {
 		my ($purchases) = @_;
 
 		$type = $type . 's';
-
 		if ( $purchases && ref $purchases && $purchases->{$type} && ref $purchases->{$type} && (my $items = $purchases->{$type}->{items}) ) {
 			if ( $items && ref $items && scalar @$items ) {
 				$cb->(
@@ -343,43 +397,45 @@ sub checkPurchase {
 				return;
 			}
 		}
-
 		$cb->();
 	});
 }
 
+#Sven 2022-05-20 new parameter $type
 sub getUserFavorites {
-	my ($self, $cb, $force) = @_;
+	my ($self, $cb, $type, $force) = @_;
 
 	$self->_pagingGet('favorite/getUserFavorites', sub {
 		my ($favorites) = @_;
 
-		$favorites->{albums}->{items} = _precacheAlbum($favorites->{albums}->{items}) if $favorites->{albums};
+		$favorites->{albums}->{items} = _precacheAlbum($favorites->{albums}->{items})  if $favorites->{albums};
 		$favorites->{tracks}->{items} = _precacheTracks($favorites->{tracks}->{items}) if $favorites->{tracks};
 
 		$cb->($favorites);
-	},{
-		limit      => QOBUZ_USERDATA_LIMIT,
-		_extractor => sub {
-			my ($favorites) = @_;
-			my $collectedFavorites;
-
-			map {
-				my $offset = $_;
-				if ($collectedFavorites) {
-					foreach my $category (qw(albums artists tracks)) {
-						push @{$collectedFavorites->{$category}->{items}}, @{$favorites->{$offset}->{$category}->{items}};
-					}
-				}
-				else {
-					$collectedFavorites = $favorites->{$offset};
-				}
-			} sort {
-				$a <=> $b
-			} keys %$favorites;
-
-			return $collectedFavorites;
-		},
+	}, {
+		limit => QOBUZ_USERDATA_LIMIT,
+		type => $type, #Sven - Parameter für Qobuz API 'favorite/getUserFavorites'
+		_extractor => $type, #Sven - Parameter für _pagingGet()
+		#_extractor => sub {
+		#	my ($favorites) = @_;
+		#	my $collectedFavorites;
+		
+		#	map {
+		#		my $offset = $_;
+		#		if ($collectedFavorites) {
+		#			foreach my $category (qw(albums artists tracks)) {
+		#				push @{$collectedFavorites->{$category}->{items}}, @{$favorites->{$offset}->{$category}->{items}};
+		#			}
+		#		}
+		#		else {
+		#			$collectedFavorites = $favorites->{$offset};
+		#		}
+		#	} sort {
+		#		$a <=> $b
+		#	} keys %$favorites;
+			
+		#	return $collectedFavorites;
+		#},
 		_maxKey   => sub {
 			my ($favorites) = @_;
 			return max($favorites->{albums}->{total}, $favorites->{artists}->{total}, $favorites->{tracks}->{total});
@@ -390,50 +446,96 @@ sub getUserFavorites {
 	});
 }
 
-sub createFavorite {
+#Sven 2022-05-13 add
+sub setFavorite {
 	my ($self, $cb, $args) = @_;
+
+	my $command = 'favorite/' . ($args->{add} ? 'create' : 'delete');
+	my $type = $args->{album_ids} ? 'albums' : ($args->{track_ids} ? 'tracks' : 'artists');
+
+	delete $args->{add};
+	$args->{_use_token} = 1;
+	$args->{_nocache}   = 1;
+
+	$self->_get($command, sub {
+		my $result = shift;
+		$self->getUserFavorites(sub{$cb->($result)}, $type, 'refresh');
+	}, $args);
+}
+
+#Sven 2022-05-13 add
+sub getFavoriteStatus {
+	my ($self, $cb, $args) = @_; # $args = { item_id => ...., type = ...}   Accepted values for type are 'album', 'track', 'artist', 'article'
 
 	$args->{_use_token} = 1;
 	$args->{_nocache}   = 1;
 
-	$self->_get('favorite/create', sub {
-		$cb->(shift);
-		$self->getUserFavorites(sub{}, 'refresh')
-	}, $args);
+	$self->_get('favorite/status', sub { $args->{status} = (shift->{status} eq JSON::XS::true()); $cb->($args); }, $args);
 }
 
-sub deleteFavorite {
-	my ($self, $cb, $args) = @_;
-
-	$args->{_use_token} = 1;
-	$args->{_nocache}   = 1;
-
-	$self->_get('favorite/delete', sub {
-		$cb->(shift);
-		$self->getUserFavorites(sub{}, 'refresh')
-	}, $args);
-}
-
+#Sven 2022-05-13 filter, 2023-10-09 einstellbare Sortierung
 sub getUserPlaylists {
-	my ($self, $cb, $user, $limit) = @_;
-
-	$self->_get('playlist/getUserPlaylists', sub {
-		my $playlists = shift;
-
-		$playlists->{playlists}->{items} = [ sort {
-			lc($a->{name}) cmp lc($b->{name})
-		} @{$playlists->{playlists}->{items} || []} ] if $playlists && ref $playlists && $playlists->{playlists} && ref $playlists->{playlists};
-
-		$cb->($playlists);
-	}, {
-		username => $user || Plugins::Qobuz::API::Common->username($self->userId),
-		limit    => $limit || QOBUZ_USERDATA_LIMIT,
+	my ($self, $cb, $args) = @_;
+	
+	$args = $args || {};
+	
+	my $myArgs = {
+#		username => $args->{user} || Plugins::Qobuz::API::Common->username($self->userId),
+		user_id  => $args->{user_id} || $self->userId, #Sven
+		limit    => $args->{limit} || QOBUZ_USERDATA_LIMIT,
 		_ttl     => QOBUZ_USER_DATA_EXPIRY,
 		_user_cache => 1,
+		_use_token => 1,
+		_wipecache => $args->{force},
+	};
+	if ($args->{filter}) { $myArgs->{filter} = $args->{filter} };
+	
+	my $sort = $cb;
+	
+	if ($prefs->get('sortUserPlaylists') || 0 == 1) {
+		$sort = sub {
+			my $playlists = shift;
+
+			$playlists->{playlists}->{items} = [ sort {
+				lc($a->{name}) cmp lc($b->{name})
+			} @{$playlists->{playlists}->{items} || []} ] if $playlists && ref $playlists && $playlists->{playlists} && ref $playlists->{playlists};
+		
+			$cb->($playlists);
+		};
+	};
+
+	$self->_get('playlist/getUserPlaylists', $sort, $myArgs);
+
+}
+
+#Sven 2022-05-14 add
+sub doPlaylistCommand {
+	my ($self, $cb, $args) = @_;
+	
+	$self->_get('playlist/' . $args->{command}, sub {
+		my $result = shift;
+		$self->getUserPlaylists(sub{$cb->($result)}, { force => 'refresh'});
+	}, {
+		playlist_id => $args->{playlist_id},
+		_use_token => 1,
+		_nocache => 1
+	});
+}
+
+#Sven 2022-05-23 add
+sub getSimilarPlaylists {
+	my ($self, $cb, $playlistId) = @_;
+	
+	$self->_get('playlist/get', $cb, {
+		playlist_id => $playlistId,
+		extra       => 'getSimilarPlaylists',
+		limit    => QOBUZ_USERDATA_LIMIT,
+		_ttl     => QOBUZ_USER_DATA_EXPIRY,
 		_use_token => 1,
 	});
 }
 
+#Sven 2022-05-12 fix
 sub getPublicPlaylists {
 	my ($self, $cb, $type, $genreId, $tags) = @_;
 
@@ -443,12 +545,13 @@ sub getPublicPlaylists {
 		_ttl  => QOBUZ_EDITORIAL_EXPIRY,
 	};
 
-	$args->{genre_ids} = $genreId if $genreId;
+	$args->{genre_id} = $genreId if $genreId; #Sven 2022-05-12 changed from $args->{genre_ids} to $args->{genre_id}
 	$args->{tags} = $tags if $tags;
 
 	$self->_get('playlist/getFeatured', $cb, $args);
 }
 
+#Sven 2024-01-11 ab hier bis zum Ende ist der Kode identisch mit der Originalversion von Michael Herger
 sub getPlaylistTracks {
 	my ($self, $cb, $playlistId) = @_;
 

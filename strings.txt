@@ -1,4 +1,4 @@
-# String file for Qobuz plugin
+# String file for Qobuz plugin 20.16.10 - Enhancements from SvenInNdh
 
 PLUGIN_QOBUZ
 	EN	Qobuz
@@ -98,6 +98,12 @@ PLUGIN_QOBUZ_PREFS_FORMAT
 	FR	Format préféré
 	NL	Voorkeursformaat
 
+PLUGIN_QOBUZ_PREFS_FORMAT_DESC
+	DE	FLAC funktioniert nur mit einem "hifi" Premium Konto
+	EN	FLAC works only with 'hifi' premium account
+	FR	le FLAC peut nécessiter un abonnement spécifique
+	NL	ondersteuning van FLAC is afhankelijk van jouw Qobuz abonnement
+
 PLUGIN_QOBUZ_SUB_GENRES
 	DE	Unterteilungen
 	EN	Subgenres
@@ -134,7 +140,7 @@ PLUGIN_QOBUZ_USERPURCHASES
 	NL	Mijn Aankopen
 
 PLUGIN_QOBUZ_USERPLAYLISTS
-	DE	Meine Wiedergabelisten
+	DE	Meine Playlisten
 	EN	My Playlists
 	FR	Mes Listes de Lecture
 	NL	Mijn Afspeellijsten
@@ -147,11 +153,11 @@ PLUGIN_QOBUZ_USER_FAVORITES
 	NL	Mijn Favorieten
 
 PLUGIN_QOBUZ_MANAGE_FAVORITES
-	DE	Favoriten verwalten
-	EN	Manage Favorites
-	EN_GB	Manage Favourites
-	FR	Gestion des Favoris
-	NL	Beheer Favorieten
+	DE	Qobuz Favoriten
+	EN	Qobuz Favorites
+	EN_GB	Qobuz Favourites
+	FR	Qobuz Favoris
+	NL	Qobuz Favorieten
 
 PLUGIN_QOBUZ_MUSIC_ADDED
 	CS	Byla přidána hudba
@@ -169,18 +175,18 @@ PLUGIN_QOBUZ_MUSIC_ADDED
 	SV	Musiken har lagts till
 
 PLUGIN_QOBUZ_ADD_FAVORITE
-	DE	Qobuz Favorit '%s' erstellen
-	EN	Add '%s' to Qobuz favorites
-	EN_GB	Add '%s' to Qobuz favourites
-	FR	Ajouter "%s" aux favoris Qobuz
-	NL	Voeg '%s' toe aan Qobuz favorieten
+	DE	Favorit %s erstellen
+	EN	Add %s to favorites
+	EN_GB	Add %s to favourites
+	FR	Ajouter %s aux favoris
+	NL	Voeg %s toe aan favorieten
 
 PLUGIN_QOBUZ_REMOVE_FAVORITE
-	DE	Qobuz Favorit '%s' entfernen
-	EN	Remove '%s' from Qobuz favorites
-	EN_GB	Remove '%s' from Qobuz favourites
-	FR	Retirer "%s" des favoris Qobuz
-	NL	Verwijder '%s' van Qobuz favorieten
+	DE	Favorit %s entfernen
+	EN	Remove %s from favorites
+	EN_GB	Remove %s from favourites
+	FR	Retirer %s des favoris
+	NL	Verwijder %s van favorieten
 
 PLUGIN_QOBUZ_SEARCH
 	DE	Suche '%s'
@@ -189,16 +195,16 @@ PLUGIN_QOBUZ_SEARCH
 	NL	Zoek '%s'
 
 PLUGIN_QOBUZ_PUBLICPLAYLISTS
-	DE	Qobuz Wiedergabelisten
+	DE	Qobuz Playlisten
 	EN	Qobuz Playlists
 	FR	Listes de Lecture Qobuz
 	NL	Qobuz Afspeellijsten
 
 PLUGIN_QOBUZ_LATESTPLAYLISTS
-	DE	Benutzer Wiedergabelisten
-	EN	User Playlists
-	FR	Listes de Lecture d'utilisateurs
-	NL	Gebruikers Afspeellijsten
+	DE	Neueste Playlisten
+	EN	Latest Playlists
+	FR	Dernières listes de lecture
+	NL	Laatste afspeellijsten
 
 PLUGIN_ON_QOBUZ
 	DE	Auf Qobuz
@@ -259,11 +265,11 @@ PLUGIN_QOBUZ_PLAY_SAMPLES
 	DE	Hörproben wiedergeben
 	EN	Play samples
 	FR	Écouter les extraits
-	NL	Sample afspelen
+	NL	Sample afspelen 
 
 PLUGIN_QOBUZ_PLAY_SAMPLES_DESC
 	DE	Manche Musikstücke sind nicht zum online-Hören verfügbar. In diesen Fällen kann jedoch ein 30-Sekunden Hörprobe abgespielt werden. Diese werden mit einem * im Titel gekennzeichnet.
-	EN	Some tracks are not available for streaming. Should the 30-second sample be played instead? These titles will be labeled with an asterisk (*).
+	EN	Some tracks are not available for streaming. Should the 30 seconds sample be played instead? These titles will be labeled with an asterisk (*).
 	FR	Certains morceaux ne sont pas disponibles en streaming. Seul un extrait de 30 secondes peut être écouté. Ces morceaux sont repérés par un astérisque (*).
 	NL	Sommige nummers zijn niet beschikbaar voor streaming. In plaats daarvan kan een sample van 30 seconden worden gespeeld. Deze worden aangegeven met een asterisk (*).
 
@@ -292,11 +298,19 @@ PLUGIN_QOBUZ_PERFORMERS
 	ES	Créditos
 
 PLUGIN_QOBUZ_MYWEEKLYQ
-	EN	My Weekly Q
+	EN	My weekly Q
 
 PLUGIN_QOBUZ_REAUTH_DESC
 	DE	Leider müssen Sie sich erneut bei Qobuz anmelden. Sie können das gleich hier erledigen, oder in den LMS Einstellungen/Erweitert/Qobuz das Konto entfernen und neu anmelden.
 	EN	Unfortunately we need to re-authenticate with Qobuz. You can enter your password here, or go to LMS/Settings/Advanced/Qobuz to remove and add again your account.
+	FR	Malheureusement, vous devez vous reconnecter à Qobuz. Vous pouvez le faire ici, ou supprimer le compte et vous reconnecter dans Paramètres LMS/Avancé/Qobuz.
+	NL	Helaas moet je dan opnieuw inloggen op Qobuz. Je kunt dit hier doen, of het account verwijderen en opnieuw inloggen in de LMS Instellingen/Geavanceerd/Qobuz.
+
+PLUGIN_QOBUZ_SHOW_USERPURCHASES
+	DE	Meine Einkäufe anzeigen
+	EN	Show my purchases
+	FR	Afficher mes achats
+	NL	Laat mijn aankopen zien
 
 PLUGIN_QOBUZ_SHOW_COMPOSER_WITH_ARTIST
 	DE	Komponisten mit Interpret anzeigen
@@ -327,7 +341,7 @@ PLUGIN_QOBUZ_SORT_FAVORITES_ALPHA
 	DE	Alphabetisch sortieren
 	EN	Sort alphabetically
 	FR	Trier par ordre alphabétique
-	NL	Sorteer alphabetisch
+	NL	alfabetisch te sorteren
 
 PLUGIN_QOBUZ_SORT_FAVORITE_ALBUMS_ALPHA
 	DE	Nach Interpret und Album sortieren
@@ -339,13 +353,31 @@ PLUGIN_QOBUZ_SORT_FAVORITES_DEFAULT
 	DE	Nach Hinzufügedatum sortieren
 	EN	Sort by date added
 	FR	Trier par date d'ajout
-	NL	Standaard sorteervolgorde behouden
+	NL	Sorteer op datum toegevoegd
+
+PLUGIN_QOBUZ_SORT_PLAYLISTS
+	DE	Playlisten sortiert nach
+	EN	Playlists sorted by
+	FR	Listes de lecture triés par
+	NL	Afspeellijsten gesorteerd op
+
+PLUGIN_QOBUZ_SORT_PLAYLISTS_ALPHA
+	DE	Alphabetisch sortieren
+	EN	Sort alphabetically
+	FR	Trier par ordre alphabétique
+	NL	alfabetisch te sorteren
+
+PLUGIN_QOBUZ_SORT_PLAYLISTS_DEFAULT
+	DE	Nach Hinzufügedatum sortieren
+	EN	Sort by date added
+	FR	Trier par date d'ajout
+	NL	Sorteer op datum toegevoegd
 
 PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS
-	DE	Künstleralben sortieren
+	DE	Interpretenalben sortieren
 	EN	Sort Artist Albums
 	FR	Trier les albums des artistes
-	NL	Sorteer artiestenalbums
+	NL	Artiestenalbums sorteren
 
 PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_ALPHA
 	DE	Alphabetisch sortieren
@@ -362,19 +394,27 @@ PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_BY_DATE_NEW
 PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_BY_DATE_OLD
 	DE	Nach Veröffentlichungsdatum sortieren (älteste zuerst)
 	EN	Sort by release date (oldest first)
-	FR	Trier par date de sortie (le plus ancien en premier)
+	FR	Trier par date de sortie (la plus ancienne en premier)
 	NL	Sorteer op releasedatum (oudste eerst)
 
 PLUGIN_QOBUZ_HIRES
-	EN	Hi-Res
-	NL	Hi-Res
+	DE	^
+	EN	[Hi-Res]
+	FR	[Hi-Res]
+	NL	[Hi-Res]
 
 PLUGIN_QOBUZ_RELEASED_AT
-	DE	Erschienen am
-	EN	Released at
+	DE	Veröffentlicht
+	EN	Released
 	FR	Sortie le
 	NL	Verschenen op
 
+PLUGIN_QOBUZ_UPDATED_AT
+	DE	Aktualisiert
+	EN	Updated
+	FR	Mis à jour
+	NL	Bijgewerkt
+	
 PLUGIN_QOBUZ_LABEL
 	DE	Musiklabel
 	EN	Music Label
@@ -524,10 +564,10 @@ PLUGIN_QOBUZ_PARENTAL_WARNING_DESC
 	ES	Los álbumes/pistas con contenido explícito se etiquetarán con [E]
 
 PLUGIN_QOBUZ_SHOW_DISCS
-	DE	Disc-Überschriften und Wiedergabelisten anzeigen
+	DE	Disc-Überschriften und Playlists anzeigen
 	EN	Show disc headings and playlists
 	FR	Afficher les titres des disques et les listes de lecture
-	NL	Schijftitels en afspeellijsten weergeven
+	NL	Schijfkoppen en afspeellijsten weergeven
 	ES	Mostrar encabezados de discos y listas de reproducción
 
 PLUGIN_QOBUZ_SHOW_DISCS_DESC
@@ -550,4 +590,128 @@ PLUGIN_QOBUZ_TRACK_LC
 	FR	piste
 	NL	nummer
 	ES	pista
+
+# Enhancements from SvenInNdh
+
+PLUGIN_QOBUZ_ALBUM_PICKS
+	DE	Album Auswahl
+	EN	Album Picks
+
+PLUGIN_QOBUZ_FILTER_SEARCH
+	DE	Suchresultate filtern
+	EN	Filter search results
+	FR	Trier les résultats des recherches
+
+PLUGIN_QOBUZ_FILTER_SEARCH_DESC
+	DE	Qobuz Suchresultate sind leider häufig unübersichtlich und unlogisch sortiert. Das Plugin kann versuchen, dies zu verbessern. Allerdings kann dies auf langsamen Servern die Antwortzeit verlängern.
+	EN	Qobuz search results often are confusing and poorly sorted. This plugin can try to improve the situation. But this comes at a cost: on slower systems you might experience a performance hit.
+	FR	Les recherches sur Qobuz souvent rendent des listes assez troublantes. Cette extension essaye d'améliorer la situations. Sur des systèmes peu performants ce processus peut ralentir le service.
+
+PLUGIN_QOBUZ_PLAY_PLAYLIST
+	DE	Play/Playliste
+	EN	Play/Playlist
+
+PLUGIN_QOBUZ_ORIGINAL_RELEASED_AT
+	DE	ursprünglich
+	EN	originally	
+
+PLUGIN_QOBUZ_CREDITS
+	DE	Credits
+	EN	Credits
+	FR	Crédits
+	NL	Credits
+	ES	Créditos
+
+PLUGIN_QOBUZ_TRACK
+	DE	Titel
+	EN	Track
+	
+PLUGIN_QOBUZ_TRACKS
+	DE	Titel
+	EN	Tracks
+	
+PLUGIN_QOBUZ_RECENT_RELEASES
+	DE	Immer noch aktuell...
+	EN	Recent releases
+
+PLUGIN_QOBUZ_NEW_RELEASES
+	DE	Neuheiten
+	EN	New Releases
+	FR	Nouveautés
+
+PLUGIN_QOBUZ_NEW_RELEASES_FULL
+	DE	Alle Neuheiten
+	EN	All new Releases	
+
+PLUGIN_QOBUZ_PRESS
+	DE	Von der Presse ausgezeichnet
+	EN	In the Press
+	FR	Vu dans la Presse
+
+PLUGIN_QOBUZ_EDITOR_PICKS
+	DE	Auswahl der Qobuz Redaktion
+	EN	Qobuz Selection
+	FR	Sélection Qobuz
+
+PLUGIN_QOBUZ_QOBUZISSIMS
+	DE	Qobuzissime
+	EN	Qobuzissims
+
+PLUGIN_QOBUZ_BESTSELLERS
+	DE	Die bestverkauften Alben
+	EN	Bestsellers
+	FR	Meilleures Ventes
+
+PLUGIN_QOBUZ_MOST_STREAMED
+	DE	Die meistengehörten Alben
+	EN	Most streamed
+
+PLUGIN_QOBUZ_MOST_FEATURED
+	DE	Die meistgenannten Alben
+	EN	Most featured
+
+PLUGIN_QOBUZ_IDEAL_DISCOGRAPHY
+	DE	Qobuz' perfekte Schallplattensammlung
+	EN	Ideal discography
+
+PLUGIN_QOBUZ_SUBCRIPTION
+	DE	Abonnement
+	EN	Subscription
+
+PLUGIN_QOBUZ_SUBSCRIPTION
+	DE	Abonnement
+	EN	Subscription
+
+PLUGIN_QOBUZ_SUBSCRIBE
+	DE	Abonnieren
+	EN	Subscribe
+
+PLUGIN_QOBUZ_UNSUBSCRIBE
+	DE	Abbestellen
+	EN	Unsubscribe
+
+PLUGIN_QOBUZ_REMOVE_PLAYLIST
+	DE	Löschen
+	EN	Delete
+	EN_GB	Delete
+	FR	Supprimer
+	NL	Verwijderen
+
+PLUGIN_QOBUZ_SIMILAR_PLAYLISTS
+	DE	Ähnliche Playlisten
+	EN	Similar Playlists
+	FR	Listes de lecture similaires
+	NL	Vergelijkbare afspeellijsten
+
+PLUGIN_QOBUZ_MORE_PLAYLISTS_FROM
+	DE	Mehr Playlisten von
+	EN	More playlists from
+	FR	Plus de listes de lecture de
+	NL	Meer afspeellijsten van
+
+PLUGIN_QOBUZ_FOCUS
+	DE	Focus
+	EN	Focus
+	FR	Focus
+	NL	Focus
 

@@ -1,3 +1,33 @@
+=head Infos
+Sven 2024-02-04 enhancements based on version 1.400 up to 3.1.0
+ 1. included a new album information menu befor playing the album
+	It shows: Samplesize, Samplerate, Genre, Duration, Description if present, Goodies (Booklet) if present,
+	trackcount, Credits including performers, Conductor if present, Artist, Composer, ReleaseDate, Label (with label albums),
+	Copyright, add Album or Artist to your Qobuz favorites
+ Enhanced Artist menu with biography, album list, title list, playlists, similar artists 
+ 2. added samplerate of currently streamed file in the 'More Info' menu
+ 3. added samplesize of currently streamed file in the 'More Info' menu
+ 4. shows conductor including artist information for classic albums
+ 5. added seeking inside flac files while playing
+ 6. added new preference 'FLAC 24 bits / 96 kHz (Hi-Res)'
+ 7. my prefered menu order in main menu
+ 8. added "Album Information" if MusicArtistInfo plugin is installed.
+ 9. added "Artist Information" if MusicArtistInfo plugin is installed.
+10. added a menu for a playlist item with the playlist, duration, title count, description,
+          owner (if present), genres, release date, update date, similar playlists (if present)
+10. added subscribe/unsubscribe of playlist subscribtion
+12. added delete my own playlists
+13. added much more compatibility and useability with LMS favorites
+
+
+all changes are marked with "#Sven" in source code
+changed files: API.pm, Plugin.pm, ProtocolHandler.pm, Settings.pm, strings.txt and basic.html from .../Qobuz/HTML/EN/plugins/Qobuz/settings/basic.html
+
+With the value type => 'link' a list with symbols gets the option "Toggle View"
+With the value type => 'playlist' a list with symbols gets the option "Toggle View" and the "ADD" and "PLAY" buttons are displayed.
+It should therefore only be used for track lists (album, tracks and playlists).
+Since version 3.0.7 my hack of "My weekly Q" ist included in Qobuz plugin of Pierre Beck / Michael Herger
+=cut
 package Plugins::Qobuz::Plugin;
 
 use strict;
@@ -5,7 +35,7 @@ use base qw(Slim::Plugin::OPMLBased);
 
 use JSON::XS::VersionOneAndTwo;
 use Tie::RegexpHash;
-use POSIX qw(strftime);
+#use POSIX qw(strftime); ??? geht scheinbar auch ohne
 
 use Slim::Formats::RemoteMetadata;
 use Slim::Player::ProtocolHandlers;
@@ -16,6 +46,7 @@ use Slim::Utils::Strings qw(string cstring);
 use Plugins::Qobuz::API;
 use Plugins::Qobuz::API::Common;
 use Plugins::Qobuz::ProtocolHandler;
+use Plugins::Qobuz::Addon;
 
 use constant CAN_IMPORTER => (Slim::Utils::Versions->compareVersions($::VERSION, '8.0.0') >= 0);
 use constant CLICOMMAND => 'qobuzquery';
@@ -34,6 +65,8 @@ tie my %localizationTable, 'Tie::RegexpHash';
 %localizationTable = (
 	qr/^Livret Num.rique/i => 'PLUGIN_QOBUZ_BOOKLET'
 );
+
+my $IsMusicArtistInfo = 0; #Sven
 
 $prefs->init({
 	accounts => {},
@@ -76,6 +109,7 @@ my $log = Slim::Utils::Log->addLogCategory( {
 use constant PLUGIN_TAG => 'qobuz';
 use constant CAN_IMAGEPROXY => (Slim::Utils::Versions->compareVersions($::VERSION, '7.8.0') >= 0);
 
+#Sven 2022-05-10
 sub initPlugin {
 	my $class = shift;
 
@@ -115,22 +149,28 @@ sub initPlugin {
 	) );
 
 	Slim::Menu::ArtistInfo->registerInfoProvider( qobuzArtistInfo => (
-		func => \&artistInfoMenu
+		func  => \&artistInfoMenu
 	) );
 
 	Slim::Menu::AlbumInfo->registerInfoProvider( qobuzAlbumInfo => (
-		func => \&albumInfoMenu
+		func  => \&albumInfoMenu
 	) );
 
 	Slim::Menu::GlobalSearch->registerInfoProvider( qobuzSearch => (
 		func => \&searchMenu
 	) );
 
-#                                                             |requires Client
-#                                                             |  |is a Query
-#                                                             |  |  |has Tags
-#                                                             |  |  |  |Function to call
-#                                                             C  Q  T  F
+	#Sven 2022-05-10 
+	Slim::Menu::PlaylistInfo->registerInfoProvider( qobuzPlaylistInfo => (
+		#after => 'playitem',
+		func => \&albumInfoMenu
+	) );
+
+	#                                                          |requires Client
+	#                                                          |  |is a Query
+	#                                                          |  |  |has Tags
+	#                                                          |  |  |  |Function to call
+	#                                                          C  Q  T  F
 	Slim::Control::Request::addDispatch(['qobuz', 'goodies'], [1, 1, 1, \&_getGoodiesCLI]);
 
 	Slim::Control::Request::addDispatch(['qobuz', 'playalbum'], [1, 0, 0, \&cliQobuzPlayAlbum]);
@@ -160,6 +200,7 @@ sub initPlugin {
 	);
 }
 
+#Sven
 sub postinitPlugin {
 	my $class = shift;
 
@@ -191,6 +232,16 @@ sub postinitPlugin {
 
 		main::INFOLOG && $log->is_info && $log->info("Successfully registered BrowseArtist handler for Qobuz");
 	}
+	
+	#Sven
+	if ( Slim::Utils::PluginManager->isEnabled('Plugins::MusicArtistInfo::Plugin') ) {
+		eval {
+			require Plugins::MusicArtistInfo::AlbumInfo;
+			require Plugins::MusicArtistInfo::ArtistInfo;
+		};
+		$IsMusicArtistInfo = 1;
+	}
+
 }
 
 sub onlineLibraryNeedsUpdate {
@@ -215,6 +266,7 @@ sub getDisplayName { 'PLUGIN_QOBUZ' }
 # don't add this plugin to the Extras menu
 sub playerMenu {}
 
+#Sven 2024-01-24 
 sub handleFeed {
 	my ($client, $cb, $args) = @_;
 
@@ -280,71 +332,72 @@ sub handleFeed {
 			$cb->({ items => $items });
 		},
 	},{
-		name => cstring($client, 'PLUGIN_QOBUZ_USERPURCHASES'),
-		url  => \&QobuzUserPurchases,
-		image => 'html/images/albums.png'
+#Sven - ab hier angepasst
+		name  => cstring($client, 'PLUGIN_QOBUZ_USER_FAVORITES'),
+		image => 'html/images/favorites.png',
+		type  => 'menu', #Sven - view type
+		items => [{
+			name  => cstring($client, 'ALBUMS'),
+			image => 'html/images/albums.png',
+			url   => \&QobuzUserFavorites,
+			type  => 'albums', #Sven - view type
+			passthrough => ['albums'],
+			}, {
+			name  => cstring($client, 'SONGS'),
+			image => 'html/images/playlists.png',
+			type  => 'playlist',
+			url   => \&QobuzUserFavorites,
+			passthrough => ['tracks'],
+			}, {
+			name  => cstring($client, 'ARTISTS'),
+			image => 'html/images/artists.png',
+			type  => 'artists', #Sven - view type
+			url   => \&QobuzUserFavorites,
+			passthrough => ['artists'],
+			}
+		],
 	},{
-		name => cstring($client, 'PLUGIN_QOBUZ_USER_FAVORITES'),
-		url  => \&QobuzUserFavorites,
-		image => 'html/images/favorites.png'
-	},{
-		name => cstring($client, 'PLUGIN_QOBUZ_USERPLAYLISTS'),
-		url  => \&QobuzUserPlaylists,
-		image => 'html/images/playlists.png'
-	},{
-		name => cstring($client, 'PLUGIN_QOBUZ_PUBLICPLAYLISTS'),
-		url  => \&QobuzPublicPlaylists,
-		image => 'html/images/playlists.png',
-		passthrough => [{
-			type    => 'editor-picks',
-		}]
-	},{
-	# 	name => cstring($client, 'PLUGIN_QOBUZ_LATESTPLAYLISTS'),
-	# 	url  => \&QobuzPublicPlaylists,
-	# 	image => 'html/images/playlists.png',
-	# 	passthrough => [{
-	# 		type    => 'last-created',
-	# 	}]
-	# },{
-		name => cstring($client, 'PLUGIN_QOBUZ_BESTSELLERS'),
-		url  => \&QobuzFeaturedAlbums,
+		name => cstring($client, 'PLUGIN_QOBUZ_ALBUM_PICKS'),
 		image => 'html/images/albums.png',
-		passthrough => [{
-			type    => 'best-sellers',
-		}]
-	},{
-		name => cstring($client, 'PLUGIN_QOBUZ_NEW_RELEASES'),
-		url  => \&QobuzFeaturedAlbums,
-		image => 'html/images/albums.png',
-		passthrough => [{
-			type    => 'new-releases-full',
-		}]
-	},{
-		name => cstring($client, 'PLUGIN_QOBUZ_PRESS'),
-		url  => \&QobuzFeaturedAlbums,
-		image => 'html/images/albums.png',
-		passthrough => [{
-			type    => 'press-awards',
-		}]
-	},{
-		name => cstring($client, 'PLUGIN_QOBUZ_EDITOR_PICKS'),
-		url  => \&QobuzFeaturedAlbums,
-		image => 'html/images/albums.png',
-		passthrough => [{
-			type    => 'editor-picks',
-		}]
+		type  => 'menu', #Sven - view type
+		url  => \&QobuzAlbums,
+		passthrough => [{ genreId => '' }]
 	},{
 		name  => cstring($client, 'GENRES'),
 		image => 'html/images/genres.png',
-		type => 'link',
-		url  => \&QobuzGenres
+		type  => 'menu', #Sven - view type
+		url  => \&QobuzGenres	
+	},{
+		name => cstring($client, 'PLUGIN_QOBUZ_PUBLICPLAYLISTS'),
+		url  => \&QobuzPublicPlaylists,
+		type  => 'menu', #Sven - view type
+		image => 'html/images/playlists.png',
+		passthrough => [{ type => 'editor-picks' }]
+	},{
+		name => cstring($client, 'PLUGIN_QOBUZ_LATESTPLAYLISTS'),
+		url  => \&QobuzPublicPlaylists,
+		image => 'html/images/playlists.png',
+		type  => 'playlists', #Sven - view type
+		passthrough => [{ type => 'last-created' }]
+	},{
+		name => cstring($client, 'PLUGIN_QOBUZ_USERPLAYLISTS'),
+		type  => 'playlists', #Sven - view type
+		url  => \&QobuzUserPlaylists,
+		image => 'html/images/playlists.png'
 	},{
 		name => cstring($client, 'PLUGIN_QOBUZ_MYWEEKLYQ'),
-		type  => 'playlist',
+		type  => 'link',
 		url  => \&QobuzMyWeeklyQ,
 		image => 'html/images/playlists.png'
 	}];
-
+	
+	push @$items, {
+		name => cstring($client, 'PLUGIN_QOBUZ_USERPURCHASES'),
+		type  => 'link',
+		url  => \&QobuzUserPurchases,
+		image => 'html/images/albums.png'
+	} if ($prefs->get('showUserPurchases'));
+	
 	if ($client && scalar @{ Plugins::Qobuz::API::Common::getAccountList() } > 1) {
 		push @$items, {
 			name => cstring($client, 'PLUGIN_QOBUZ_SELECT_ACCOUNT'),
@@ -352,8 +405,10 @@ sub handleFeed {
 			url => \&QobuzSelectAccount,
 		};
 	}
-
-	$cb->({ items => $items });
+	
+	$cb->({
+		items => $items
+	});
 }
 
 sub QobuzSelectAccount {
@@ -382,6 +437,7 @@ sub QobuzSelectAccount {
 	$cb->({ items => $items });
 }
 
+#Sven 2022-05-20
 sub QobuzMyWeeklyQ {
 	my ($client, $cb, $params) = @_;
 
@@ -393,21 +449,42 @@ sub QobuzMyWeeklyQ {
 		my $myWeekly = shift;
 
 		if (!$myWeekly) {
+			$log->error("Get MyWeekly ($myWeekly) failed");
 			$cb->();
 			return;
 		}
 
 		my $tracks = [];
 
-		foreach my $track ( @{$myWeekly->{tracks}->{items} || []} ) {
-			push @$tracks, _trackItem($client, $track);
+		foreach my $track (@{$myWeekly->{tracks}->{items} || []}) {
+			push @$tracks, _trackItem($client, $track, 1); #Sven  $params->{isWeb}
 		}
-
-		return $cb->({
+		
+		my $items = []; #ref array
+		
+		push @$items, {
 			name  => $myWeekly->{title},
 			name2 => $myWeekly->{baseline},
+			image => $myWeekly->{images}->{large},
+			type  => 'playlist',
 			items => $tracks,
-		});
+		};
+		
+		push @$items, {
+			name => $myWeekly->{track_count} . ' ' . cstring($client, ($myWeekly->{tracks_count} eq 1 ? 'PLUGIN_QOBUZ_TRACK' : 'PLUGIN_QOBUZ_TRACKS')) . ' - ' . cstring($client, 'LENGTH') . ' ' . _sec2hms($myWeekly->{duration}),
+			type => 'text'
+		};
+		
+		push @$items, { name => cstring($client, 'PLUGIN_QOBUZ_RELEASED_AT') . cstring($client, 'COLON') . ' ' . Slim::Utils::DateTime::shortDateF($myWeekly->{generated_at}), type  => 'text' } if $myWeekly->{generated_at};
+		
+		if ($myWeekly->{description}) {
+			push @$items, {
+				name  => cstring($client, 'DESCRIPTION'),
+				items => [{ name => _stripHTML($myWeekly->{description}), type => 'textarea'}],
+			};
+		}
+		
+		$cb->({ items => $items });  
 	});
 }
 
@@ -447,6 +524,45 @@ sub QobuzGetWebToken {
 	}] });
 }
 
+#Sven 2022-05-18
+sub QobuzAlbums {
+	my ($client, $cb, $params, $args) = @_;
+	
+	my $genreId = $args->{genreId} || '';
+	my @types = (
+		['new-releases',		'PLUGIN_QOBUZ_NEW_RELEASES'],
+		['recent-releases',		'PLUGIN_QOBUZ_RECENT_RELEASES'],
+		['press-awards',		'PLUGIN_QOBUZ_PRESS'],
+		['most-streamed',		'PLUGIN_QOBUZ_MOST_STREAMED'],
+		['editor-picks',		'PLUGIN_QOBUZ_EDITOR_PICKS'],
+		['ideal-discography',	'PLUGIN_QOBUZ_IDEAL_DISCOGRAPHY'],
+		['qobuzissims',			'PLUGIN_QOBUZ_QOBUZISSIMS'],
+		['best-sellers',		'PLUGIN_QOBUZ_BESTSELLERS'],
+		['most-featured',		'PLUGIN_QOBUZ_MOST_FEATURED'],
+		['new-releases-full',	'PLUGIN_QOBUZ_NEW_RELEASES_FULL'],
+		#['harmonia-mundi',		'harmonia-mundi'],
+		#['universal-classic',	'universal-classic'],
+		#['universal-jazz',		'universal-jazz'],
+		#['universal-jeunesse',	'universal-jeunesse'],
+		#['universal-chanson',	'universal-chanson'],
+	);
+	
+	my $items = [];
+	
+	foreach (@types) { 
+		push @$items, {
+			name => cstring($client, $$_[1]),
+			url  => \&QobuzFeaturedAlbums,
+			image => 'html/images/albums.png',
+			type  => 'albums', #Sven - view type
+			passthrough => [{ genreId => $genreId, type => $$_[0] }]
+		};
+	};
+	
+	$cb->({ items => $items });
+}
+
+#Sven
 sub QobuzSearch {
 	my ($client, $cb, $params, $args) = @_;
 
@@ -493,33 +609,37 @@ sub QobuzSearch {
 			name  => cstring($client, 'ALBUMS'),
 			items => $albums,
 			image => 'html/images/albums.png',
+			type  => 'albums', #Sven - view type
 		} if scalar @$albums;
 
 		push @$items, {
 			name  => cstring($client, 'ARTISTS'),
 			items => $artists,
 			image => 'html/images/artists.png',
+			type  => 'artists', #Sven - view type
 		} if scalar @$artists;
 
 		push @$items, {
 			name  => cstring($client, 'SONGS'),
 			items => $tracks,
 			image => 'html/images/playlists.png',
+			type  => 'playlist',
 		} if scalar @$tracks;
 
 		push @$items, {
 			name  => cstring($client, 'PLAYLISTS'),
 			items => $playlists,
 			image => 'html/images/playlists.png',
+			type  => 'playlists', #Sven - view type
 		} if scalar @$playlists;
 
 		if (scalar @$items == 1) {
 			$items = $items->[0]->{items};
 		}
 
-		$cb->( {
+		$cb->({
 			items => $items
-		} );
+		});
 	}, $search, $type);
 }
 
@@ -530,7 +650,7 @@ sub browseArtistMenu {
 	if ( defined($artistId) && $artistId =~ /^\d+$/ && (my $artistObj = Slim::Schema->resultset("Contributor")->find($artistId))) {
 		if (my ($extId) = grep /qobuz:artist:(\d+)/, @{$artistObj->extIds}) {
 			($args->{artistId}) = $extId =~ /qobuz:artist:(\d+)/;
-			return QobuzArtist($client, $cb, $params, $args);
+			return QobuzArtist($client, $cb, undef, { artistId => $args->{artistId} });
 		}
 		else {
 			$args->{q}    = $artistObj->name;
@@ -575,6 +695,7 @@ sub browseArtistMenu {
 	}]);
 }
 
+#Sven 2020-03-27
 sub QobuzArtist {
 	my ($client, $cb, $params, $args) = @_;
 
@@ -588,39 +709,40 @@ sub QobuzArtist {
 			return;
 		}
 
-		my $items = [{
+		my $items = [];
+		
+		if ($artist->{biography}) {
+			push @$items, {
+				name  => cstring($client, 'PLUGIN_QOBUZ_BIOGRAPHY'),
+				image => Plugins::Qobuz::API::Common->getImageFromImagesHash($artist->{image}) || $api->getArtistPicture($artist->{id}) || 'html/images/artists.png',
+				items => [{
+					name => _stripHTML($artist->{biography}->{content}), # $artist->{biography}->{summary} ||
+					type => 'textarea',
+				}],
+			}
+		}
+		#Sven
+		else {
+			push @$items, {
+				name  => $artist->{name},
+				image => $api->getArtistPicture($artist->{id}) || 'html/images/artists.png',
+				type  => 'text'
+			}
+		}	
+		
+		push @$items, {
 			name  => cstring($client, 'ALBUMS'),
 			# placeholder URL - please see below for albums returned in the artist query
 			url   => \&QobuzSearch,
 			image => 'html/images/albums.png',
+			type  => 'albums', #Sven - view type
 			passthrough => [{
 				q        => $artist->{name},
 				type     => 'albums',
 				artistId => $artist->{id},
 			}]
-		},{
-			name  => cstring($client, 'SONGS'),
-			url   => \&QobuzSearch,
-			image => 'html/images/playlists.png',
-			passthrough => [{
-				q        => $artist->{name},
-				type     => 'tracks',
-				artistId => $artist->{id},
-			}]
-		}];
-
-		if ($artist->{biography}) {
-			my $images = $artist->{image} || {};
-			push @$items, {
-				name  => cstring($client, 'PLUGIN_QOBUZ_BIOGRAPHY'),
-				image => Plugins::Qobuz::API::Common->getImageFromImagesHash($images) || $api->getArtistPicture($artist->{id}) || 'html/images/artists.png',
-				items => [{
-					name => _stripHTML($artist->{biography}->{content}),
-					type => 'textarea',
-				}],
-			}
-		}
-
+		};
+		
 		# use album list if it was returned in the artist lookup
 		if ($artist->{albums}) {
 			my $albums = [];
@@ -637,9 +759,9 @@ sub QobuzArtist {
 					if ( ($a->{tracks_count} >= 4 && $b->{tracks_count} < 4) || ($a->{tracks_count} < 4 && $b->{tracks_count} >=4) ) {
 						return $b->{tracks_count} <=> $a->{tracks_count};
 					}
-
-					return lc($a->{title}) cmp lc($b->{title});
 				}
+				
+				return lc($a->{title}) cmp lc($b->{title});
 
 			} @{$artist->{albums}->{items} || []} ];
 
@@ -648,23 +770,48 @@ sub QobuzArtist {
 				push @$albums, _albumItem($client, $album);
 			}
 			if (@$albums) {
-				$items->[0]->{items} = $albums;
-				delete $items->[0]->{url};
+				$items->[1]->{items} = $albums;
+				delete $items->[1]->{url};
 			}
 		}
+		
+		push @$items, {
+			name  => cstring($client, 'SONGS'),
+			url   => \&QobuzSearch,
+			image => 'html/images/playlists.png',
+			type  => 'playlist',
+			passthrough => [{
+				q        => $artist->{name},
+				type     => 'tracks',
+				artistId => $artist->{id},
+			}]
+		};
 
+		#Sven 2020-03-13
+		push @$items, {	name  => cstring($client, 'PLAYLISTS'),
+			url   => \&QobuzSearch,
+			image => 'html/images/playlists.png',
+			type  => 'playlists', #Sven - view type
+			passthrough => [{
+				q        => $artist->{name},
+				type     => 'playlists',
+				artistId => $artist->{id},
+			}],
+		};
+		
 		push @$items, {
 			name => cstring($client, 'PLUGIN_QOBUZ_SIMILAR_ARTISTS'),
 			image => 'html/images/artists.png',
+			type  => 'artists', #Sven - view type
 			url => sub {
 				my ($client, $cb, $params, $args) = @_;
 
 				$api->getSimilarArtists(sub {
 					my $searchResult = shift;
+		
+					if (! $searchResult) { $cb->(); return;} #2020-03-21 Sven
 
 					my $items = [];
-
-					$cb->() unless $searchResult;
 
 					for my $artist ( @{$searchResult->{artists}->{items}} ) {
 						push @$items, _artistItem($client, $artist, 1);
@@ -680,28 +827,33 @@ sub QobuzArtist {
 			}],
 		};
 
-		$api->getUserFavorites(sub {
-			my $favorites = shift;
-			my $artistId = $artist->{id};
-			my $isFavorite = ($favorites && $favorites->{artists}) ? grep { $_->{id} eq $artistId } @{$favorites->{artists}->{items}} : 0;
-
+		if ($IsMusicArtistInfo) { # && $params) {  #Sven 2020-04-07 && $params is undef if it is called from browseArtistMenu() because of display error in Material Skin "Artist-Information - Pictures" when called from OnlineLibrary
 			push @$items, {
- 				name => cstring($client, $isFavorite ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', $artist->{name}),
-				url  => $isFavorite ? \&QobuzDeleteFavorite : \&QobuzAddFavorite,
-				image => 'html/images/favorites.png',
-				passthrough => [{
-					artist_ids => $artist->{id},
-				}],
-				nextWindow => 'parent'
-			};
+				name  => cstring($client, 'PLUGIN_MUSICARTISTINFO_ARTISTINFO'),
+				image => 'html/images/artists.png',
+				type  => 'menu', #Sven - view type
+				#type  => 'link',
+				#use ArtistInfo::getArtistMenu() and not ArtistInfo->getArtistMenu() to pass $client as first parameter. 
+				items => Plugins::MusicArtistInfo::ArtistInfo::getArtistMenu($client, undef, { artist => $artist->{name} })
+			}
+		}
 
-			$cb->({
-				items => $items
-			});
-		});
+		#Sven 2020-03-30
+		push @$items, {
+			name => cstring($client, 'PLUGIN_QOBUZ_MANAGE_FAVORITES'),
+			image => 'html/images/favorites.png',
+			type => 'menu', #'link',
+			url  => \&QobuzManageFavorites,
+			passthrough => [{artistId => $artist->{id}, artist => $artist->{name}}]
+		};
+
+		$cb->( {
+			items => $items
+		} );
 	}, $args->{artistId});
 }
 
+#Sven
 sub QobuzGenres {
 	my ($client, $cb, $params, $args) = @_;
 
@@ -718,17 +870,13 @@ sub QobuzGenres {
 		my $items = [];
 
 		for my $genre ( @{$genres->{genres}->{items}}) {
-			my $item = {};
-
-			$item = {
+			push @$items, { #Sven Kode optimiert
 				name => $genre->{name},
-				url  => \&QobuzGenre,
-				passthrough => [{
-					genreId => $genre->{id},
-				}]
+				image => 'html/images/genres.png',
+				type => 'menu', #Sven
+				url => \&QobuzGenre,
+				passthrough => [{ genreId => $genre->{id} }]
 			};
-
-			push @$items, $item;
 		}
 
 		$cb->({
@@ -737,91 +885,37 @@ sub QobuzGenres {
 	}, $genreId);
 }
 
-
+#Sven 2019-10-07
 sub QobuzGenre {
 	my ($client, $cb, $params, $args) = @_;
 
 	my $genreId = $args->{genreId} || '';
-
-	getAPIHandler($client)->getGenre(sub {
-		my $genre = shift;
-
-		if (!$genre) {
-			$log->error("Get genre ($genreId) failed");
-			return;
-		}
-
-		my $items = [{
-			name => cstring($client, 'PLUGIN_QOBUZ_BESTSELLERS'),
-			url  => \&QobuzFeaturedAlbums,
-			image => 'html/images/albums.png',
-			passthrough => [{
-				genreId => $genreId,
-				type    => 'best-sellers',
-			}]
-		},{
-			name => cstring($client, 'PLUGIN_QOBUZ_NEW_RELEASES'),
-			url  => \&QobuzFeaturedAlbums,
-			image => 'html/images/albums.png',
-			passthrough => [{
-				genreId => $genreId,
-				type    => 'new-releases-full',
-			}]
-		},{
-			name => cstring($client, 'PLUGIN_QOBUZ_PRESS'),
-			url  => \&QobuzFeaturedAlbums,
-			image => 'html/images/albums.png',
-			passthrough => [{
-				genreId => $genreId,
-				type    => 'press-awards',
-			}]
-		},{
-			name => cstring($client, 'PLUGIN_QOBUZ_EDITOR_PICKS'),
-			url  => \&QobuzFeaturedAlbums,
-			image => 'html/images/albums.png',
-			passthrough => [{
-				genreId => $genreId,
-				type    => 'editor-picks',
-			}]
-		},{
-			name => cstring($client, 'PLUGIN_QOBUZ_PUBLICPLAYLISTS'),
-			url  => \&QobuzPublicPlaylists,
-			image => 'html/images/playlists.png',
-			passthrough => [{
-				genreId => $genreId,
-				type    => 'editor-picks',
-			}]
-		},{
-			name => cstring($client, 'PLUGIN_QOBUZ_LATESTPLAYLISTS'),
-			url  => \&QobuzPublicPlaylists,
-			image => 'html/images/playlists.png',
-			passthrough => [{
-				genreId => $genreId,
-				type    => 'last-created',
-			}]
-		}];
-
-		if ($genre->{subgenresCount}) {
-			push @$items, {
-				name => cstring($client, 'PLUGIN_QOBUZ_SUB_GENRES'),
-				url  => \&QobuzGenres,
-				image => 'html/images/genres.png',
-				passthrough => [{
-					genreId => $genreId,
-				}]
-			}
-		}
-
-		foreach my $album ( @{$genre->{albums}->{items}} ) {
-			push @$items, _albumItem($client, $album);
-		}
-
-		$cb->({
-			items => $items
-		});
-	}, $genreId);
+	
+	my $items = [{
+		name => cstring($client, 'PLUGIN_QOBUZ_ALBUM_PICKS'),
+		image => 'html/images/albums.png',
+		type  => 'albums', #Sven - view type
+		url  => \&QobuzAlbums,
+		passthrough => [{ genreId => $genreId }]
+	},{
+		name => cstring($client, 'PLUGIN_QOBUZ_PUBLICPLAYLISTS'),
+		url  => \&QobuzPublicPlaylists,
+		image => 'html/images/playlists.png',
+		type  => 'menu', #Sven - view type
+		passthrough => [{ genreId => $genreId, type => 'editor-picks' }]
+		# es ist kein Unterschied zu der Liste PLUGIN_QOBUZ_PUBLICPLAYLISTS feststellbar	
+	 #},{ 
+		#name => cstring($client, 'PLUGIN_QOBUZ_LATESTPLAYLISTS'),
+		#url  => \&QobuzPublicPlaylists,
+		#type  => 'menu', #Sven - view type
+		#image => 'html/images/playlists.png',
+		#passthrough => [{ genreId => $genreId, type => 'last-created' }]
+	}];
+	
+	$cb->({
+		items => $items
+	});
 }
-
 
 sub QobuzFeaturedAlbums {
 	my ($client, $cb, $params, $args) = @_;
@@ -856,7 +950,7 @@ sub QobuzUserPurchases {
 		}
 
 		for my $track ( @{$searchResult->{tracks}->{items}} ) {
-			push @$items, _trackItem($client, $track);
+			push @$items, _trackItem($client, $track, 1);
 		}
 
 		$cb->( {
@@ -865,146 +959,132 @@ sub QobuzUserPurchases {
 	});
 }
 
+#Sven 2022-05-20, 2023-02-11 v2.8.1
 sub QobuzUserFavorites {
-	my ($client, $cb, $params, $args) = @_;
+	my ($client, $cb, $params, $type) = @_;
 
 	getAPIHandler($client)->getUserFavorites(sub {
 		my $favorites = shift;
 
 		my $items = [];
-
-		my @artists;
-		for my $artist ( sort {
-			Slim::Utils::Text::ignoreCaseArticles($a->{name}) cmp Slim::Utils::Text::ignoreCaseArticles($b->{name})
-		} @{$favorites->{artists}->{items}} ) {
-			push @artists,  _artistItem($client, $artist, 'withIcon');
+		my @aItem = @{$favorites->{$type}->{items}};
+		if (scalar @aItem) {
+			if ($type eq 'albums')     { for my $item ( @aItem ) { push @$items, _albumItem($client, $item); }; }
+			elsif ($type eq 'tracks')  { for my $item ( @aItem ) { push @$items, _trackItem($client, $item); }; }
+			elsif ($type eq 'artists') { for my $item ( @aItem ) { push @$items, _artistItem($client, $item, 'withIcon'); }; }
+			
+			my $sortFavsAlphabetically = $prefs->get('sortFavsAlphabetically') || 0;
+			if ( $sortFavsAlphabetically ) {
+				my $sortFields = { albums => ['line1', 'name'], artists => ['name', 'name'], tracks => ['line1', 'line2'] };
+				my $sortField  = $sortFields->{$type}[$sortFavsAlphabetically - 1];
+				@$items = sort { Slim::Utils::Text::ignoreCaseArticles($a->{$sortField}) cmp Slim::Utils::Text::ignoreCaseArticles($b->{$sortField}) } @$items;
+			};
 		}
-
-		push @$items, {
-			name => cstring($client, 'ARTISTS'),
-			items => \@artists,
-			image => 'html/images/artists.png',
-		} if @artists;
-
-		my @albums;
-		for my $album ( @{$favorites->{albums}->{items}} ) {
-			push @albums, _albumItem($client, $album);
-		}
-
-		my $sortFavsAlphabetically = $prefs->get('sortFavsAlphabetically') || 0;
-
-		push @$items, {
-			name => cstring($client, 'ALBUMS'),
-			items => $sortFavsAlphabetically ? [ sort { Slim::Utils::Text::ignoreCaseArticles($a->{name}) cmp Slim::Utils::Text::ignoreCaseArticles($b->{name}) } @albums ] : \@albums,
-			image => 'html/images/albums.png',
-		} if @albums;
-
-		my @tracks;
-		for my $track ( @{$favorites->{tracks}->{items}} ) {
-			push @tracks, _trackItem($client, $track);
-		}
-
-		my $sortFavSongField = $sortFavsAlphabetically == 1 ? 'name' : 'line2';
-
-		push @$items, {
-			name => cstring($client, 'SONGS'),
-			items => $sortFavsAlphabetically ? [ sort { Slim::Utils::Text::ignoreCaseArticles($a->{$sortFavSongField}) cmp Slim::Utils::Text::ignoreCaseArticles($b->{$sortFavSongField}) } @tracks ] : \@tracks,
-			image => 'html/images/playlists.png',
-		} if @tracks;
 
 		$cb->( {
 			items => $items
 		} );
-	});
+	}, $type, 0);
 }
 
+#Sven 2022-05-17 look at 'Info multi AP-Calls.pm'
 sub QobuzManageFavorites {
 	my ($client, $cb, $params, $args) = @_;
-
-	getAPIHandler($client)->getUserFavorites(sub {
-		my $favorites = shift;
-
+	
+	my $status = { artist => -1, album => -1, track => -1};
+	my $call = {};
+	
+	my $callback = sub {
+		my $result = shift;
+		
+		if ($result) {
+			$status->{$result->{type}} = $result->{status};
+			delete($call->{$result->{type}});
+		}
+		
+		return if (scalar keys %$call > 0);
+		
 		my $items = [];
-
-		if ( (my $artist = $args->{artist}) && (my $artistId = $args->{artistId}) ) {
-			my $isFavorite = grep { $_->{id} eq $artistId } @{$favorites->{artists}->{items}};
-
+		
+		if ($status->{artist} > -1) {
 			push @$items, {
-				name => cstring($client, $isFavorite ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', $artist),
-				url  => $isFavorite ? \&QobuzDeleteFavorite : \&QobuzAddFavorite,
-				passthrough => [{
-					artist_ids => $artistId
-				}],
+				name => cstring($client, $status->{artist} ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', cstring($client, 'ARTIST') . " '" . $args->{artist} . "'"),
+				#name => cstring($client, 'ARTIST') . ':' . $args->{artist},
+				#line2 => cstring($client, $status->{artist} ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', $args->{artist}),
+				image => 'html/images/favorites.png', #$status->{artist} ? 'html/images/favorites_remove.png' : 'html/images/favorites.png',
+				type => 'link',
+				url  => \&QobuzSetFavorite,
+				passthrough => [{ artist_ids => $args->{artistId}, add => !$status->{artist} }],
 				nextWindow => 'grandparent'
 			};
 		}
-
-		if ( (my $album = $args->{album}) && (my $albumId = $args->{albumId}) ) {
-			my $isFavorite = grep { $_->{id} eq $albumId } @{$favorites->{albums}->{items}};
-
+		
+		if ($status->{album} > -1) {
+			my $albumname = cstring($client, 'ALBUM') . " '" . $args->{album} . ($args->{artist} ? ' ' . cstring($client, 'BY') . ' ' . $args->{artist} : '') . "'";
 			push @$items, {
-				name => cstring($client, $isFavorite ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', $album),
-				url  => $isFavorite ? \&QobuzDeleteFavorite : \&QobuzAddFavorite,
-				passthrough => [{
-					album_ids => $albumId
-				}],
+				name => cstring($client, $status->{album} ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', $albumname),
+				#name => $args->{album},
+				#line2 => cstring($client, $status->{album} ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', $args->{album}),
+				image => 'html/images/favorites.png', #$status->{album} ? 'html/images/favorites_remove.png' : 'html/images/favorites.png',
+				type => 'link',
+				url  => \&QobuzSetFavorite,
+				passthrough => [{ album_ids => $args->{albumId}, add => !$status->{album} }],
+				nextWindow => 'grandparent'
+			};
+			Plugins::Qobuz::Addon::favMenu($client, $args, $items);
+		};
+		
+		if ($status->{track} > -1) {
+			push @$items, {
+				name => cstring($client, $status->{track} ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', cstring($client, 'TRACK') . " '" . $args->{title} . "'"),
+				#name => $args->{title},
+				#line2 => cstring($client, $status->{track} ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', $args->{title}),
+				image => 'html/images/favorites.png', # $status->{track} ? 'html/images/favorites_remove.png' : 'html/images/favorites.png',
+				type => 'link',
+				url  => \&QobuzSetFavorite,
+				passthrough => [{ track_ids => $args->{trackId}, add => !$status->{track} }],
 				nextWindow => 'grandparent'
 			};
 		}
-
-		if ( (my $title = $args->{title}) && (my $trackId = $args->{trackId}) ) {
-			my $isFavorite = grep { $_->{id} eq $trackId } @{$favorites->{tracks}->{items}};
-
-			push @$items, {
-				name => cstring($client, $isFavorite ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', $title),
-				url  => $isFavorite ? \&QobuzDeleteFavorite : \&QobuzAddFavorite,
-				passthrough => [{
-					track_ids => $trackId
-				}],
-				nextWindow => 'grandparent'
-			};
-		}
-
-		$cb->( {
-			items => $items
-		} );
-	}, 'refresh');
+		
+		$cb->( { items => $items } );
+	};
+	
+	my $api = getAPIHandler($client);
+	
+	if ($args->{artist} && $args->{artistId}) {
+		$call->{artist} = 1;
+		$api->getFavoriteStatus($callback, { item_id => $args->{artistId}, type => 'artist' });
+	}
+	
+	if ($args->{album}  && $args->{albumId}) {
+		$call->{album} = 1;
+		$api->getFavoriteStatus($callback, { item_id => $args->{albumId}, type => 'album' });
+	}
+	
+	if ($args->{title}  && $args->{trackId}) {
+		$call->{track} = 1;
+		$api->getFavoriteStatus($callback, { item_id => $args->{trackId},  type => 'track' });
+	}
 }
 
-sub QobuzAddFavorite {
+#Sven 2022-05-13
+sub QobuzSetFavorite {
 	my ($client, $cb, $params, $args) = @_;
 
-	getAPIHandler($client)->createFavorite(sub {
-		my $result = shift;
-		$cb->({ items => [{
-			name        => cstring($client, 'PLUGIN_QOBUZ_MUSIC_ADDED'),
-			showBriefly => 1,
-			nextWindow  => 'grandparent',
-		}] });
-	}, $args);
+	getAPIHandler($client)->setFavorite(sub { $cb->(); }, $args);
 }
 
-sub QobuzDeleteFavorite {
-	my ($client, $cb, $params, $args) = @_;
-
-	getAPIHandler($client)->deleteFavorite(sub {
-		my $result = shift;
-		$cb->({
-			text        => $result->{status},
-			showBriefly => 1,
-			nextWindow  => 'grandparent',
-		});
-	}, $args);
-}
-
+#Sven 2022-05-23
 sub QobuzUserPlaylists {
 	my ($client, $cb, $params, $args) = @_;
 
 	getAPIHandler($client)->getUserPlaylists(sub {
-		_playlistCallback(shift, $cb, undef, $params->{isWeb});
-	});
+		_playlistCallback(shift, $cb, 'showOwner', $params->{isWeb});
+	}, $args); #Sven 2022-05-23
 }
 
+#Sven 2020-03-28
 sub QobuzPublicPlaylists {
 	my ($client, $cb, $params, $args) = @_;
 
@@ -1023,7 +1103,9 @@ sub QobuzPublicPlaylists {
 				my @items = map {
 					{
 						name => $_->{name}->{$lang} || $_->{name}->{en},
-						url  => \&QobuzPublicPlaylists,
+						image => 'html/images/playlists.png', #Sven 2020-03-28
+						type  => 'playlists', #Sven
+						url   => \&QobuzPublicPlaylists,
 						passthrough => [{
 							tags => $_->{id},
 							type => $type
@@ -1049,12 +1131,16 @@ sub QobuzPublicPlaylists {
 	}
 }
 
+#Sven 2022-05-23
 sub _playlistCallback {
 	my ($searchResult, $cb, $showOwner, $isWeb) = @_;
 
+	#$log->error(Data::Dump::dump($searchResult));
+	$searchResult = ($searchResult->{playlists}) ? $searchResult->{playlists} : $searchResult->{similarPlaylist}; #Sven 2022-05-23
+
 	my $playlists = [];
 
-	for my $playlist ( @{$searchResult->{playlists}->{items}} ) {
+	for my $playlist ( @{$searchResult->{items}} ) {
 		next if defined $playlist->{tracks_count} && !$playlist->{tracks_count};
 		push @$playlists, _playlistItem($playlist, $showOwner, $isWeb);
 	}
@@ -1064,34 +1150,198 @@ sub _playlistCallback {
 	} );
 }
 
-# sub infoSamplerate {
-# 	my ( $client, $url, $track, $remoteMeta ) = @_;
+#Sven 2022-05-23
+sub QobuzSimilarPlaylists {
+	my ($client, $cb, $params, $playlistId) = @_;
+	
+	getAPIHandler($client)->getSimilarPlaylists(sub {
+		_playlistCallback(shift, $cb, 'showOwner', $params->{isWeb});
+	}, $playlistId);
+}
 
-# 	if ( my $sampleRate = $remoteMeta->{samplerate} ) {
-# 		return {
-# 			type  => 'text',
-# 			label => 'SAMPLERATE',
-# 			name  => sprintf('%.1f kHz', $sampleRate)
-# 		};
-# 	}
-# }
+#Sven 2022-05-11 called from _playlistItem
+sub QobuzPlaylistItem {
+	my ($client, $cb, $params, $playlist, $args) = @_;
+	
+	#$log->error(Data::Dump::dump($args));
+	
+	my $items = []; #ref array
+	
+	push @$items, {
+		name  => $args->{name},
+		name2 => $args->{owner},
+		image => $args->{image},
+		url   => \&QobuzPlaylistGetTracks,
+		passthrough => [ $playlist->{id} ],
+		type  => 'playlist',
+		favorites_url  => 'qobuz://playlist:' . $playlist->{id} . '.qbz', #fügt dem Contextmenu"In Favoriten speichern" hinzu
+		favorites_type => 'playlist',
+	};
+	
+	push @$items, {
+		name => $playlist->{tracks_count} . ' ' . cstring($client, ($playlist->{tracks_count} eq 1 ? 'PLUGIN_QOBUZ_TRACK' : 'PLUGIN_QOBUZ_TRACKS')) . ' - ' . cstring($client, 'LENGTH') . ' ' . _sec2hms($playlist->{duration}),
+		type  => 'text',
+	};
+	
+	my $temp = $playlist->{genres};
+	if ($temp && ref $temp && scalar @$temp) {
+		my $genre_s = '';
+		map { $genre_s .= ', ' . $_->{name} } @$temp;
+		push @$items, { name  => substr($genre_s, 2), label => 'GENRE', type => 'text' };
+	}
+	
+	my $temp = $playlist->{featured_artists}; # is a ref of an array
+	if ($temp && ref $temp && scalar @$temp) {
+		my @artists = map { _artistItem($client, $_, 'withIcon') } @$temp;
+		push @$items, { name => cstring($client, 'ARTISTS'), items => \@artists } if scalar @artists; #Ausgewählte Künstler
+	}
+	
+	if ($playlist->{description}) {
+		push @$items, {
+			name  => cstring($client, 'DESCRIPTION'),
+			items => [{ name => _stripHTML($playlist->{description}), type => 'textarea'}],
+		};
+	}
+	
+	#Sven 2022-05-23 created_at ist vom Datum her immer gleich public_at, die Uhrzeit in public_at ist immer 00:00:00.
+	push @$items, {
+		name => cstring($client, 'PLUGIN_QOBUZ_RELEASED_AT') . cstring($client, 'COLON') . ' ' . Slim::Utils::DateTime::shortDateF($playlist->{created_at}),
+		type  => 'text'
+		} if $playlist->{created_at};
+	
+	push @$items, {
+		name => cstring($client, 'PLUGIN_QOBUZ_UPDATED_AT') . cstring($client, 'COLON') . ' ' . Slim::Utils::DateTime::shortDateF($playlist->{updated_at}),
+		type  => 'text'
+		} if $playlist->{updated_at};
+	
+	if ($playlist->{stores}) {
+		push @$items, {
+			name => cstring($client, 'PLUGIN_QOBUZ_SIMILAR_PLAYLISTS'),
+			type => 'playlists', #'link',
+			url  => \&QobuzSimilarPlaylists,
+			passthrough => [$playlist->{id}],
+		};
+	}
+	else {
+		push @$items, {
+			name => cstring($client, 'PLUGIN_QOBUZ_MORE_PLAYLISTS_FROM') . ' ' . $playlist->{owner}->{name},
+			type => 'playlists', #'link',
+			url  => \&QobuzUserPlaylists,
+			passthrough => [{ user_id => $playlist->{owner}->{id}, filter => 'owner' }],
+		};
+	}
+	
+	if ($playlist->{owner}->{id} eq getAPIHandler($client)->userId) { #Sven - eq Plugins::Qobuz::API::Common->getUserdata($client, 'id')) {
+		push @$items, {
+			name => cstring($client, 'PLUGIN_QOBUZ_REMOVE_PLAYLIST'),
+			items => [{
+				name => $args->{name} . ' - ' . cstring($client, 'PLUGIN_QOBUZ_REMOVE_PLAYLIST'),
+				type => 'link',
+				url  => \&QobuzPlaylistCommand,
+				passthrough => [{ playlist_id => $playlist->{id}, command => 'delete' }],
+				nextWindow => 'grandparent'
+			}],	
+		};
+	}
+	else {
+		push @$items, {
+			name => cstring($client, 'PLUGIN_QOBUZ_SUBSCRIPTION'),
+			type => 'link',
+			url  => \&QobuzPlaylistSubscription,
+			passthrough => [ $playlist ],
+		};
+	}
+	$cb->({ items => $items });
+}
 
-# sub infoBitsperSample {
-# 	my ( $client, $url, $track, $remoteMeta ) = @_;
+#Sven 2022-05-14
+sub QobuzPlaylistSubscription {
+	my ($client, $cb, $params, $playlist) = @_;
+	
+	getAPIHandler($client)->getUserPlaylists(sub {
+		my $playlists = shift;
+		my $isSubscribed;
+		
+		if ($playlists && ref $playlists && $playlists->{playlists} && ref $playlists->{playlists}) {
+			my $playlistId = $playlist->{id};
+			foreach (@{$playlists->{playlists}->{items}}) {
+				if ($isSubscribed = ($_->{id} eq $playlistId)) { last };
+			};
+		};
+		
+		my $item = {
+			name => $playlist->{name} . ' - ' . cstring($client, $isSubscribed ? 'PLUGIN_QOBUZ_UNSUBSCRIBE' : 'PLUGIN_QOBUZ_SUBSCRIBE'),
+			#line2 => cstring($client, $subscribed ? 'PLUGIN_QOBUZ_UNSUBSCRIBE' : 'PLUGIN_QOBUZ_SUBSCRIBE'), #cstring($client, 'ALBUM')),
+			image => 'html/images/favorites.png', #$isFavorite ? 'html/images/favorites_remove.png' : 'html/images/favorites_add.png',
+			type => 'link',
+			url  => \&QobuzPlaylistCommand,
+			passthrough => [{ playlist_id => $playlist->{id}, command => ($isSubscribed ? 'unsubscribe' : 'subscribe') }],
+			nextWindow => 'grandparent' #'parent' ist zu wenig, 'grandparent' spring zurück auf die Liste
+		};
+		
+		$cb->( { items => [$item] } );
+	});
+}
 
-# 	if ( my $samplesize = $remoteMeta->{samplesize} ) {
-# 		return {
-# 			type  => 'text',
-# 			label => 'SAMPLESIZE',
-# 			name  => $samplesize . ' ' . cstring($client, 'BITS'),
-# 		};
-# 	}
-# }
+#Sven 2022-05-14
+sub QobuzPlaylistCommand {
+	my ($client, $cb, $params, $args) = @_;
+	
+	getAPIHandler($client)->doPlaylistCommand(sub { $cb->() }, $args);
+}
 
+#Sven 2022-05-23
+sub QobuzLabelAlbums {
+	my ($client, $cb, $params, $labelId) = @_;
+	
+	#Sven zeigt den Aufrufer	
+	#my ($package, $filename, $line) = caller;
+	#$log->error($package . '::' . $filename . '('.  $line . ')');
+
+	getAPIHandler($client)->getLabelAlbums(sub {
+		my $label = shift;
+		
+		my $items = [];
+		
+		for my $album ( @{$label->{albums}->{items}} ) {
+			push @$items, _albumItem($client, $album);
+		};
+		
+		$cb->( { items => $items } );
+	}, $labelId);
+}
+
+#Sven 2019-03-19
+#Slim::Utils::DateTime::timeFormat(),
+sub _sec2hms {
+	my $seconds = @_[0] || '0';
+
+	my $minutes   = int($seconds / 60);
+	my $hours     = int($minutes / 60);
+	return $hours eq 0 ? sprintf('%02s:%02s', $minutes, $seconds % 60) : sprintf('%s:%02s:%02s', $hours, $minutes % 60, $seconds % 60); 
+}
+
+#Sven 2019-04-11, 2022-05-10
+sub _quality {
+	my $meta = @_[0];
+	
+	$meta = $meta->{tracks}->{items}[0] if $meta->{tracks}; #Sven 2020-12-31 liest die Qualität aus dem 1. Track wenn $meta ein Album und kein Track ist
+	
+	my $channels = $meta->{maximum_channel_count};
+	if ($channels) {
+		if ($channels eq 2) { $channels = '' } # 'Stereo'
+		elsif ($channels eq 1) { $channels = ' - Mono' }
+		else { $channels = ' - ' . $channels . ' Kanal' }
+		
+		return $meta->{maximum_bit_depth} . '-Bit ' . $meta->{maximum_sampling_rate} . 'kHz' . $channels;
+	}
+	return $meta->{bitrate};
+}
+
+#Sven 2022-05-05 shows album infos before playing music, it is an enhanced version 'sub QobuzGetTracks {'
 sub QobuzGetTracks {
 	my ($client, $cb, $params, $args) = @_;
 	my $albumId = $args->{album_id};
-	my $albumTitle = $args->{album_title};
 
 	my $api = getAPIHandler($client);
 
@@ -1112,8 +1362,8 @@ sub QobuzGetTracks {
 
 				if ($isFavorite) {  # if it's an orphaned favorite, let the user delete it
 					push @$items, {
-						name => cstring($client, 'PLUGIN_QOBUZ_REMOVE_FAVORITE', $albumTitle),
-						url  => \&QobuzDeleteFavorite,
+						name => cstring($client, 'PLUGIN_QOBUZ_REMOVE_FAVORITE', $args->{album_title}),
+						url  => \&QobuzSetFavorite,
 						image => 'html/images/favorites.png',
 						passthrough => [{
 							album_ids => $albumId
@@ -1125,7 +1375,7 @@ sub QobuzGetTracks {
 				$cb->({
 					items => $items,
 				}, @_ );
-			});
+			}, 'albums', 0); #Sven 2023-10-09
 			return;
 
 		} elsif (!$album->{streamable} && !$prefs->get('playSamples')) {  # the album is not streamable
@@ -1140,16 +1390,14 @@ sub QobuzGetTracks {
 			return;
 		}
 
-		if (!_isReleased($album) ) {
-			my $rDate = _localDate($album->{release_date_stream});
-			push @$items, {
-				name  => cstring($client, 'PLUGIN_QOBUZ_NOT_RELEASED') . ' (' . $rDate . ')',
-				type  => 'text'
-			};
-		}
+		my $artistname = $album->{artist}->{name} || '';
+		my $albumname  = ($artistname && $album->{title} ? $artistname . ' - ' . $album->{title} : $artistname) || '';
+		my $conductorname;
+		my $albumcredits = $albumname . "\n\n";
 
 		my $totalDuration = 0;
 		my $trackNumber = 0;
+		my $tracks = [];
 		my $works = {};
 		my $lastwork = "";
 		my $worksfound = 0;
@@ -1165,19 +1413,23 @@ sub QobuzGetTracks {
 		my $workComposer;
 		my $lastDisc;
 		my $discs = {};
-		my @performers;
+		my $containsUnstreamable = 0;
+#		my @performers; # 2024-01-23 Add album menu option to view detailed artist metadata.
 
 		foreach my $track (@{$album->{tracks}->{items}}) {
-
-			if (my $trackPerformers = trackInfoMenuPerformers($client, undef, undef, $track)) {
-				my $performerItems = $trackPerformers->{items};
-				foreach my $item (@$performerItems) {
-					$item->{'track'} = $track->{'track_number'};
-				}
-				push @performers, @$performerItems;
-			}
+# 2024-01-23 Add album menu option to view detailed artist metadata.
+# Ich kann bisher keinen Mehrwert zu meinen Credits entdecken, daher vorerst wieder entfernt.
+#			if (my $trackPerformers = trackInfoMenuPerformers($client, undef, undef, $track)) {
+#				my $performerItems = $trackPerformers->{items};
+#				foreach my $item (@$performerItems) {
+#					$item->{'track'} = $track->{'track_number'};
+#				}
+#				push @performers, @$performerItems;
+#			}
 
 			$totalDuration += $track->{duration};
+			$albumcredits  .= _trackDetails($client, $track) . "\n\n";
+			$conductorname  = _getConductor($track) unless ($conductorname);
 			my $formattedTrack = _trackItem($client, $track);
 			my $work = delete $formattedTrack->{work};
 
@@ -1235,9 +1487,9 @@ sub QobuzGetTracks {
 				# Create new work heading, except when the user has chosen integrated playlists - in that case
 				# the work-playlist headings will be spliced in later.
 				if ( ( $workId ne $lastwork ) || ( $lastComposer && $currentComposer && $lastComposer ne $currentComposer ) ) {
-					$workHeadingPos = push @$items,{
+					$workHeadingPos = push @$tracks,{
 						name  => $formattedTrack->{displayWork},
-						type  => 'text'
+						#type  => 'text' #Sven 2023-10-08 auskommentiert damit das Werk nicht hochgestellt angezeigt wird.
 					} unless $workPlaylistPos eq "integrated";
 
 					$noComposer = !$track->{composer}->{name};
@@ -1252,7 +1504,7 @@ sub QobuzGetTracks {
 				if ($noComposer && $track->{composer}->{name} && $workHeadingPos) {  #add composer to work title if needed
 					# Can't update @$items here when using integrated playlists, as there is no work heading in @$items at present.
 					if ( $workPlaylistPos ne "integrated" ) {
-						@$items[$workHeadingPos-1]->{name} = $formattedTrack->{displayWork};
+						@$tracks[$workHeadingPos-1]->{name} = $formattedTrack->{displayWork};
 					}
 					$works->{$worksWorkIdE}->{title} = $formattedTrack->{displayWork};
 					$noComposer = 0;
@@ -1267,11 +1519,10 @@ sub QobuzGetTracks {
 				$lastComposer = $track->{composer}->{name};
 
 			} elsif ($lastwork ne "") {  # create a separator line for tracks without a work
-				push @$items,{
-					name  => "--------",
+				push @$tracks,{
+					name  => "————————",
 					type  => 'text'
 				};
-
 				$lastwork = "";
 				$noComposer = 0;
 			}
@@ -1279,8 +1530,7 @@ sub QobuzGetTracks {
 			$trackNumber++;
 			$lastWorksWorkId = $worksWorkId;
 
-			push @$items, $formattedTrack;
-
+			push @$tracks, $formattedTrack;
 		}
 
 		# create a playlist for each "disc" in a multi-disc set except if we've got works (mixing disc & work playlists would go horribly wrong or at least be confusing!)
@@ -1289,7 +1539,7 @@ sub QobuzGetTracks {
 				my $discTracks = $discs->{$disc}->{tracks};
 
 				# insert disc item before the first of its tracks
-				splice @$items, $discs->{$disc}->{index}, 0, {
+				splice @$tracks, $discs->{$disc}->{index}, 0, {
 					name => $discs->{$disc}->{title},
 					image => $discs->{$disc}->{image},
 					type => 'playlist',
@@ -1317,18 +1567,18 @@ sub QobuzGetTracks {
 							my $workTrackCount = @$workTracks;
 							if ( $workTrackCount == 1 || $workTrackCount == $album->{tracks_count} ) {
 								if ( $worksfound ) {
-									splice @$items, $idx, 0, {
+									splice @$tracks, $idx, 0, {
 										name => $workComposer->{$work}->{displayWork},
 										image => 'html/images/playlists.png',
 									};
 								} else {
-									splice @$items, $idx, 0, {
+									splice @$tracks, $idx, 0, {
 										name => $workComposer->{$work}->{displayWork},
 										type => 'text',
 									}
 								}
 							} else {
-								splice @$items, $idx, 0, {
+								splice @$tracks, $idx, 0, {
 									name => $workComposer->{$work}->{displayWork},
 									image => 'html/images/playall.png',
 									type => 'playlist',
@@ -1360,135 +1610,213 @@ sub QobuzGetTracks {
 			if ( @workPlaylists ) {
 				# insert work playlists according to the user preference
 				if ( $workPlaylistPos eq "before" ) {
-					unshift @$items, @workPlaylists;
+					unshift @$tracks, @workPlaylists;
 				} elsif ( $workPlaylistPos eq "after" ) {
-					push @$items, @workPlaylists;
+					push @$tracks, @workPlaylists;
 				}
 			}
 		}
 
-		if (my $artistItem = _artistItem($client, $album->{artist}, 1)) {
-			$artistItem->{label} = 'ARTIST';
-			push @$items, $artistItem;
+		#Page starts here
+
+		#The playlist must not be at the beginning, otherwise the add/play buttons are displayed at the top, but they have no function here.
+		#Therefore the genre is displayed first in the first line.
+		#Since 2022 that's not true any more, playlist can be the first element.
+
+		#Playlist
+		push @$items, {
+#			name  => ($album->{version} ? $album->{title} . ' - ' . $album->{version} : $album->{title}),
+			name  => sprintf('%s %s %s', ($album->{version} ? $album->{title} . ' - ' . $album->{version} : $album->{title}), cstring($client, 'BY'), $album->{artist}->{name}),
+#			line1 => $album->{title} || '',
+			line2 => $album->{tracks_count} . ' ' . cstring($client, ($album->{tracks_count} eq 1 ? 'PLUGIN_QOBUZ_TRACK' : 'PLUGIN_QOBUZ_TRACKS')) . ' - ' .
+					 _sec2hms($totalDuration) . ' - (' . _quality($album) . ')',
+			image => ref $album->{image} ? $album->{image}->{large} : $album->{image},
+			type  => 'playlist',
+			items => $tracks,
+			favorites_url  => 'qobuz:album:' . $album->{id}, #war ein funktionierender Fix für Material-Skin, dort fehlte bis 2.9.5 der Menüpunkt "In Favoriten speichern" im Contextmenu
+			favorites_type => 'playlist', #Standardwert ist 'playlist', sonst 'audio' (für Radios oder Tracks)
 		};
 
-		$api->getUserFavorites(sub {
-			my $favorites = shift;
-			my $isFavorite = ($favorites && $favorites->{albums}) ? grep { $_->{id} eq $albumId } @{$favorites->{albums}->{items}} : 0;
-
-			push @$items, {
-				name => cstring($client, $isFavorite ? 'PLUGIN_QOBUZ_REMOVE_FAVORITE' : 'PLUGIN_QOBUZ_ADD_FAVORITE', $album->{title}),
-				url  => $isFavorite ? \&QobuzDeleteFavorite : \&QobuzAddFavorite,
-				image => 'html/images/favorites.png',
-				passthrough => [{
-					album_ids => $albumId
-				}],
-				nextWindow => 'parent'
-			};
-
-			if (my $item = trackInfoMenuBooklet($client, undef, undef, $album)) {
-				push @$items, $item;
-			}
-
-			# Build a consolidated list of all artists on the album
-			my @uniquePerformers;
-			if ( scalar @performers ) {
-				my %seen = ();
-				my $tracks;
-				foreach my $item (@performers) {
-					push @{$tracks->{$item->{'name'}}->{'tracks'}}, $item->{'track'};
-					delete $item->{'track'};
-					push(@uniquePerformers, $item) unless $seen{$item->{'name'}}++;
-				}
-				foreach my $item (@uniquePerformers) {
-					my @tracks = @{$tracks->{$item->{'name'}}->{'tracks'}};
-					if ( @tracks && scalar @tracks < $album->{tracks_count} ) {
-						$item->{'name'} .= scalar @tracks == 1 ? " (" . cstring($client, 'PLUGIN_QOBUZ_TRACK_LC') . " " : " (" . cstring($client, 'PLUGIN_QOBUZ_TRACKS_LC') . " ";
-						$item->{'name'} .= join(", ", @tracks) . ")";
-					}
-				}
-				my $item = {
-					name => cstring($client, 'PLUGIN_QOBUZ_PERFORMERS'),
-					items => \@uniquePerformers,
-				};
-				push @$items, $item;
-			}
-
-			push @$items,{
-				name  => $album->{genre},
-				label => 'GENRE',
-				type  => 'text'
-			},{
-				name  => Slim::Utils::DateTime::timeFormat($album->{duration} || $totalDuration),
-				label => 'ALBUMLENGTH',
-				type  => 'text'
-			},{
-				name => $album->{tracks_count},
-				label => 'PLUGIN_QOBUZ_TRACKS_COUNT',
-				type => 'text'
-			};
-
-			if (defined $album->{replay_gain}) {
-				push @$items,{
-					name  => sprintf( "%2.2f dB", $album->{replay_gain}),
-					label => 'ALBUMREPLAYGAIN',
-					type => 'text'
-				};
-			};
-
-			if ($album->{description}) {
-				push @$items, {
-					name  => cstring($client, 'DESCRIPTION'),
-					items => [{
-						name => _stripHTML($album->{description}),
-						type => 'textarea',
-					}],
-				};
-			};
-
+		if (!_isReleased($album) ) {
 			my $rDate = _localDate($album->{release_date_stream});
 			push @$items, {
-				name  => cstring($client, 'PLUGIN_QOBUZ_RELEASED_AT') . cstring($client, 'COLON') . ' ' . $rDate,
+				name  => cstring($client, 'PLUGIN_QOBUZ_NOT_RELEASED') . ' (' . $rDate . ')',
 				type  => 'text'
 			};
+		}
 
-			if ($album->{label} && $album->{label}->{name}) {
-				push @$items, {
-					name  => cstring($client, 'PLUGIN_QOBUZ_LABEL') . cstring($client, 'COLON') . ' ' . $album->{label}->{name},
-					type  => 'text'
-				};
+		push @$items, { name => $album->{genre}, label => 'GENRE', type  => 'text' };
+
+		my $item = {};
+		my $artist_ref = {}; #Referenz auf anonymen Hash
+
+		if ($conductorname) {
+			$artist_ref = lc($conductorname) eq lc($artistname) ? { name => $artistname, id => $album->{artist}->{id} } : { name => $conductorname };
+			$item = _artistItem($client, $artist_ref);
+			$item->{label} = 'CONDUCTOR';
+			push @$items, $item;
+		}
+
+		if (!$artist_ref->{id} and ($artist_ref = $album->{artist})) { #only if artist != conductor
+			if ($artist_ref->{id} != 145383) { # no Various Artists
+				$item = _artistItem($client, $artist_ref);
+				$item->{label} = 'ARTIST';
+				push @$items, $item;
 			}
+		}
 
-			my $awards = $album->{awards};
-			if ($awards && ref $awards && scalar @$awards) {
-				my $awItems = [ map {
-					{
-						name => Slim::Utils::DateTime::shortDateF($_->{awarded_at}) . ' - ' . $_->{name},
-						type => 'text'
-					}
-				} @$awards ];
-
-				push @$items, {
-					name  => cstring($client, 'PLUGIN_QOBUZ_AWARDS'),
-					items => $awItems
-				};
+		if ($item = $album->{composer}) {
+			if ($item->{id} != 573076 and $item->{id} != $artist_ref->{id}) { #no Various Composers && artist != composer
+				$item = _artistItem($client, $item);
+				$item->{label} = 'COMPOSER';
+				push @$items, $item;
 			}
+		}
 
-			if ($album->{copyright}) {
-				push @$items, {
-					name  => 'Copyright',
-					items => [{
-						name => $album->{copyright},
-						type => 'textarea',
-					}],
-				};
+		#Sven 2022-05-05
+		my $temp = $album->{artists}; # is a ref of an array
+		if ($temp && ref $temp && scalar @$temp > 1) {
+			my @artists = map { _artistItem($client, $_, 'withIcon') } @$temp;
+			push @$items, { name => cstring($client, 'ARTISTS'), items => \@artists } if scalar @artists;
+		}
+
+		if ($album->{description}) {
+			push @$items, {
+				name  => cstring($client, 'DESCRIPTION'),
+				items => [{ name => _stripHTML($album->{description}), type => 'textarea' }],
 			};
+		}
 
-			$cb->({
-				items => $items,
-			}, @_ );
-		});
-	}, $albumId);
+		#Sven 2022-05-24 - Stand heute Januar 24 scheint Focus von Qobuz nicht mehr unterstützt zu werden, items_focus ist immer undef;
+		my $focusItems = $album->{items_focus};
+		if ($focusItems && ref $focusItems && scalar @$focusItems) {
+			my @fItems = map { {
+				name => $_->{title},
+				image => $_->{image},
+				items => [{ name => $_->{accroche}, type => 'textarea' }],
+				#url => \&QobuzFocus,
+				#passthrough => [ { focus_id => $_->{id} }],
+				}
+			} @$focusItems;
+			push @$items, { name  => cstring($client, 'PLUGIN_QOBUZ_FOCUS'), items => \@fItems } if scalar @fItems;
+		}
+
+		#Sven 2022-05-01
+		my $awards = $album->{awards};
+		if ($awards && ref $awards && scalar @$awards) {
+			my @awItems = map { {name => Slim::Utils::DateTime::shortDateF($_->{awarded_at}) . ' - ' . $_->{name}, type => 'text' } } @$awards;
+			push @$items, { name  => cstring($client, 'PLUGIN_QOBUZ_AWARDS'), items => \@awItems } if scalar @awItems;
+		}
+
+		push @$items, { name => cstring($client, 'PLUGIN_QOBUZ_CREDITS'), items => [{ name => $albumcredits, type => 'textarea' }] }; 
+		
+		if ($album->{label} && $album->{label}->{name}) {
+			push @$items, {
+				name  => cstring($client, 'PLUGIN_QOBUZ_LABEL') . cstring($client, 'COLON') . ' ' . $album->{label}->{name},
+				url   => \&QobuzLabelAlbums,
+				passthrough => [ $album->{label}->{id} ],
+				};
+		}
+
+		push @$items, { name => cstring($client, 'PLUGIN_QOBUZ_RELEASED_AT') . cstring($client, 'COLON') . ' ' . Slim::Utils::DateTime::shortDateF($album->{released_at}), type  => 'text' } if $album->{released_at};
+
+		#Sven 2020-03-30
+		push @$items, { name => 'Copyright', items => [{ name => _stripHTML($album->{copyright}), type => 'textarea' }] } if $album->{copyright};
+
+		if ($IsMusicArtistInfo) {
+			push @$items, {
+				name => cstring($client, 'PLUGIN_MUSICARTISTINFO_ALBUMINFO'),
+				type => 'menu',
+				#use AlbumInfo::getAlbumMenu() and not AlbumInfo->getAlbumMenu() to pass $client as first parameter. 
+				items => Plugins::MusicArtistInfo::AlbumInfo::getAlbumMenu($client, undef, { album => { album => $album->{title}, artist => $artistname } })
+			};	
+		}
+
+		$item = trackInfoMenuBooklet($client, undef, undef, $album);
+		push @$items, $item if $item;
+
+# 2024-01-23 Build a consolidated list of all artists on the album
+# Ich kann bisher keinen Mehrwert zu meinen Credits entdecken, daher vorerst wieder entfernt.
+#		my @uniquePerformers;
+#		if ( scalar @performers ) {
+#			my %seen = ();
+#			my $tracks;
+#			foreach my $item (@performers) {
+#				push @{$tracks->{$item->{'name'}}->{'tracks'}}, $item->{'track'};
+#				delete $item->{'track'};
+#				push(@uniquePerformers, $item) unless $seen{$item->{'name'}}++;
+#			}
+#			foreach my $item (@uniquePerformers) {
+#				my @tracks = @{$tracks->{$item->{'name'}}->{'tracks'}};
+#				if ( @tracks && scalar @tracks < $album->{tracks_count} ) {
+#					$item->{'name'} .= scalar @tracks == 1 ? " (" . cstring($client, 'PLUGIN_QOBUZ_TRACK_LC') . " " : " (" . cstring($client, 'PLUGIN_QOBUZ_TRACKS_LC') . " ";
+#					$item->{'name'} .= join(", ", @tracks) . ")";
+#				}
+#			}
+#			my $item = {
+#				name => '-> ' . cstring($client, 'PLUGIN_QOBUZ_PERFORMERS'),
+#				items => \@uniquePerformers,
+#			};
+#			push @$items, $item;
+#		}
+
+		#Sven 2020-03-30
+		push @$items, {
+			name => cstring($client, 'PLUGIN_QOBUZ_MANAGE_FAVORITES'),
+			type => 'menu', #'link',
+			url  => \&QobuzManageFavorites,
+			passthrough => [{refalbum => $album, album => $albumname, albumId => $albumId, artist => $artistname, artistId => $album->{artist}->{id}}]
+			#url  => \&QobuzToggleFavorites,
+			#passthrough => [{ item_id => $albumId, type => 'album', itemname => $albumname }]
+		};
+
+		$cb->({
+			items => $items
+		}, @_ ); #calls callback function with 1 parameters
+
+	}, { album_id => $albumId, extra => 'focus' } );
+}
+
+#Sven 2022-05-10 returns a single string with track credits
+sub _trackDetails {
+	my ($client, $track) = @_;
+	my $details;
+	
+	if ($track->{track_number}) {
+		$details = sprintf("%02s. %s\n\n", $track->{track_number}, $track->{title});
+	}
+	else { #called from trackInfoMenuPerformer
+	  if ($track->{album}) {
+      $details = ' - ' . ((ref $track->{album}) ? $track->{album}->{title} : $track->{album});
+	  };
+		$details = $track->{title} . $details . "\n\n";
+	}
+	
+	if ($track->{composer}) {
+		my $composer = (ref $track->{composer}) ? $track->{composer}->{name} : $track->{composer};
+		$details .= ' . ' . cstring($client, 'COMPOSER') . ': ' . $composer . "\n" if $composer;
+	}
+	
+	$details .= sprintf(" . %s : %s - (%s)\n\n%s\n", cstring($client, 'LENGTH'), _sec2hms($track->{duration}), _quality($track), cstring($client, 'PLUGIN_QOBUZ_CREDITS'));
+	
+	map { s/,/: /; $details .= ' . ' . $_ . "\n"; } split(/ - /, $track->{performers});
+	
+	return $details;
+}
+
+sub _getConductor {
+	my $track = shift;
+	
+    my $temp = $track->{performers};
+	my $pos = index($temp, 'Conductor');
+	
+	if ($pos >= 0) {
+		my $name = substr($temp, 0, $pos - 2);
+		$pos = rindex($name, ' - ');
+		$name = substr($name, $pos+3) if $pos >= 0;
+		return $name;
+	}
+	return "";
 }
 
 sub QobuzWorkGetTracks {
@@ -1502,15 +1830,16 @@ sub QobuzWorkGetTracks {
 	});
 }
 
+#Sven 2023-10-07
 sub QobuzPlaylistGetTracks {
-	my ($client, $cb, $params, $args) = @_;
-	my $playlistId = $args->{playlist_id};
+	my ($client, $cb, $params, $playlistId) = @_;
 
 	getAPIHandler($client)->getPlaylistTracks(sub {
 		my $playlist = shift;
 
 		if (!$playlist) {
 			$log->error("Get playlist ($playlistId) failed");
+			$cb->();
 			return;
 		}
 
@@ -1519,40 +1848,37 @@ sub QobuzPlaylistGetTracks {
 		foreach my $track (@{$playlist->{tracks}->{items}}) {
 			push @$tracks, _trackItem($client, $track, $params->{isWeb});
 		}
-
 		$cb->({
 			items => $tracks,
 		}, @_ );
 	}, $playlistId);
 }
 
+#Sven 2020-04-01
 sub _albumItem {
 	my ($client, $album) = @_;
 
 	my $artist = $album->{artist}->{name} || '';
-	my $albumName = $album->{title} || '';
-	my $showYearWithAlbum = $prefs->get('showYearWithAlbum');
-	my $albumYear = $showYearWithAlbum ? $album->{year} || substr($album->{release_date_stream},0,4) || 0 : 0;
+	my $albumname = $album->{title} || '';
+	my $albumYear = $prefs->get('showYearWithAlbum') ? $album->{year} || (localtime($album->{released_at}))[5] + 1900 || 0 : 0;
 
-	if ( $album->{hires_streamable} && $albumName !~ /hi.?res|bits|khz/i && $prefs->get('labelHiResAlbums') && Plugins::Qobuz::API::Common->getStreamingFormat($album) eq 'flac' ) {
-		$albumName .= ' (' . cstring($client, 'PLUGIN_QOBUZ_HIRES') . ')';
+	if ( $album->{hires_streamable} && $albumname !~ /hi.?res|bits|khz/i && $prefs->get('labelHiResAlbums') && Plugins::Qobuz::API::Common->getStreamingFormat($album) eq 'flac' ) {
+		$albumname .= ' ' . cstring($client, 'PLUGIN_QOBUZ_HIRES');
 	}
 
-	my $item = {
-		image => $album->{image},
-	};
+	my $item = { image => ref $album->{image} ? $album->{image}->{large} : $album->{image} };
 
 	my $sortFavsAlphabetically = $prefs->get('sortFavsAlphabetically') || 0;
 	if ($sortFavsAlphabetically == 1) {
-		$item->{name} = $albumName . ($artist ? ' - ' . $artist : '');
+		$item->{name} = $albumname . ($artist ? ' - ' . $artist : '');
 	}
 	else {
-		$item->{name} = $artist . ($artist && $albumName ? ' - ' : '') . $albumName;
+		$item->{name} = $artist . ($artist && $albumname ? ' - ' : '') . $albumname;
 	}
 
-	if ($albumName) {
-		$item->{line1} = $albumName;
-		$item->{line2} = $artist . ($albumYear ? ' (' . $albumYear . ')' : '');
+	if ($albumname) {
+		$item->{line1} = $albumname;
+		$item->{line2} = $artist . " (" . $album->{tracks_count}. ' - ' . (ref $album->{genre} ? $album->{genre}->{name} : $album->{genre}) . ($albumYear ? ' - ' . $albumYear . ')' : ')'); #Sven 2023-10-09 track_count, genre and year added
 		$item->{name} .= $albumYear ? "\n(" . $albumYear . ')' : '';
 	}
 
@@ -1561,38 +1887,66 @@ sub _albumItem {
 		$item->{line1} .= ' [E]';
 	}
 
-	if (!$album->{streamable} || !_isReleased($album) ) {
-		$item->{name}  = '* ' . $item->{name};
-		$item->{line1} = '* ' . $item->{line1};
-	} else {
-		$item->{type}        = 'playlist';
+	if ( $album->{released_at} > time  || (!$album->{streamable} && !$prefs->get('playSamples')) ) {
+		my $sorry = ' (' . cstring($client, 'PLUGIN_QOBUZ_NOT_AVAILABLE') . ')';
+		$item->{name}  .= $sorry;
+		$item->{line2} .= $sorry;
+		delete $item->{type};
+		$item->{type} = 'text';
+		delete $item->{url};
+	}
+	else {
+		if (!$album->{streamable} || !_isReleased($album) ) {
+			$item->{name}  = '* ' . $item->{name};
+			$item->{line2} = '* ' . $item->{line2};
+		}
+		#Sven 2019-03-17 call the new album info menu	
+		$item->{type}        = 'link';
+		$item->{url}         = \&QobuzGetTracks;
+		$item->{passthrough} = [{ album_id => $album->{id}, album_title => $album->{title} }];
+		#$item->{isContextMenu} = 1;
+		#$item->{items} = [{ name => 'Test Entry 1', type => 'text' }, { name => 'Test Entry 2', type => 'text' }];
 	}
 
-	$item->{url}         = \&QobuzGetTracks;
-	$item->{passthrough} = [{
-		album_id => $album->{id},
-		album_title => $album->{title},
-	}];
-
 	return $item;
 }
 
+#Sven 2019-04-17 returns also artist item if artistid is unknown only with artist name
 sub _artistItem {
 	my ($client, $artist, $withIcon) = @_;
-
-	my $item = {
-		name  => $artist->{name},
-		url   => \&QobuzArtist,
-		passthrough => [{
-			artistId  => $artist->{id},
-		}],
+	my $artistId = $artist->{id};
+	
+	#$log->error($artist->{name} . ' ' . $artistId . ': ' . $artist->{picture});
+	
+	if (!$artistId) {
+		getAPIHandler($client)->search(sub {
+			my $searchResult = shift;
+			
+			$artistId = @{$searchResult->{artists}->{items} || []}[0] if $searchResult;
+			$artistId = $artistId->{id} if $artistId;
+			
+		}, $artist->{name}, 'artists', { limit => 1 });
+	}
+	#Sven 2022-05-11 - Erweiterung um Anzeige von Rollen, falls vorhanden
+	my $temp = '';
+	my $roles = $artist->{roles};
+	if ($roles && scalar @$roles) { $temp = ' (' . join(', ', map { $_ } @$roles) . ')'}
+	
+	my $item =  {
+		name => $artist->{name} . $temp,
+		type => 'mixed', #'link',
+		url  => \&QobuzArtist,
+		passthrough => [{ artistId => $artistId }],
+		favorites_url  => 'qobuz://artist:' . $artistId, #fügt dem Contextmenu"In Favoriten speichern" hinzu
+		favorites_type => 'artist',
 	};
 
-	$item->{image} = $artist->{picture} || getAPIHandler($client)->getArtistPicture($artist->{id}) || 'html/images/artists.png' if $withIcon;
+	$item->{image} = $artist->{picture} || getAPIHandler($client)->getArtistPicture($artistId) || 'html/images/artists.png' if $withIcon;
 
 	return $item;
 }
 
+#Sven 2020-03-28, 2022-05-11
 sub _playlistItem {
 	my ($playlist, $showOwner, $isWeb) = @_;
 
@@ -1600,43 +1954,50 @@ sub _playlistItem {
 
 	my $owner = $showOwner ? $playlist->{owner}->{name} : undef;
 
+	my $name = $playlist->{name} . ($isWeb && $owner ? " - $owner" : '');
+
 	return {
-		name  => $playlist->{name} . ($isWeb && $owner ? " - $owner" : ''),
-		name2 => $owner,
-		url   => \&QobuzPlaylistGetTracks,
+		name  => $name,
+		line2 => $owner,
+		url   => \&QobuzPlaylistItem,
 		image => $image,
-		passthrough => [{
-			playlist_id  => $playlist->{id},
-		}],
-		type  => 'playlist',
+		type  => 'link',
+		passthrough => [ $playlist, { name => $name, owner => $owner, image => $image } ],
 	};
 }
 
+#Sven 2023-10-08
 sub _trackItem {
 	my ($client, $track, $isWeb) = @_;
-
-	my $title = Plugins::Qobuz::API::Common->addVersionToTitle($track);
-	my $artist = Plugins::Qobuz::API::Common->getArtistName($track, $track->{album});
-	my $album  = $track->{album}->{title} || '';
-	if ( $track->{album}->{title} && $prefs->get('showDiscs') ) {
-		$album = Slim::Music::Info::addDiscNumberToAlbumTitle($album,$track->{media_number},$track->{album}->{media_count});
+	
+	#$log->error(Data::Dump::dump($track));	
+	my $title  = Plugins::Qobuz::API::Common->addVersionToTitle($track);
+	my $album  = $track->{album};
+	my $artist = Plugins::Qobuz::API::Common->getArtistName($track, $album);
+	my $albumtitle  = $album->{title} || '';
+	if ( $albumtitle && $prefs->get('showDiscs') ) {
+		$albumtitle = Slim::Music::Info::addDiscNumberToAlbumTitle($albumtitle,$track->{media_number},$album->{media_count});
 	}
-	my $genre = $track->{album}->{genre};
+#	my $genre  = $album->{genre}; #unused
 
 	my $item = {
-		name  => sprintf('%s %s %s %s %s', $title, cstring($client, 'BY'), $artist, cstring($client, 'FROM'), $album),
+		#name  => $isWeb ? sprintf('%s - %s', $title, $albumtitle) : sprintf('%02s - %s', $track->{track_number}, $title),
+		#line1 => sprintf('%02s. %s', $track->{track_number}, $track->{title}), 
+		#line2 => sprintf('%s - %s - %s', _sec2hms($track->{duration}), $artist, _quality($track)),
+		#line2 => _sec2hms($track->{duration}) . ' - ' . $artist . ($artist && $albumtitle ? ' - ' : '') . $albumtitle,
+		name  => sprintf('%s %s %s %s %s', $title, cstring($client, 'BY'), $artist, cstring($client, 'FROM'), $albumtitle),
 		line1 => $title,
-		line2 => $artist . ($artist && $album ? ' - ' : '') . $album,
-		image => Plugins::Qobuz::API::Common->getImageFromImagesHash($track->{album}->{image}),
+		line2 => $artist . ($artist && $albumtitle ? ' - ' : '') . $albumtitle . ' - ' . _sec2hms($track->{duration}), 
+		image => Plugins::Qobuz::API::Common->getImageFromImagesHash($album->{image}),
 	};
 
-	if ( $track->{hires_streamable} && $item->{name} !~ /hi.?res|bits|khz/i && $prefs->get('labelHiResAlbums') && Plugins::Qobuz::API::Common->getStreamingFormat($track->{album}) eq 'flac' ) {
-		$item->{name} .= ' (' . cstring($client, 'PLUGIN_QOBUZ_HIRES') . ')';
-		$item->{line1} .= ' (' . cstring($client, 'PLUGIN_QOBUZ_HIRES') . ')';
+	if ( $track->{hires_streamable} && $item->{name} !~ /hi.?res|bits|khz/i && $prefs->get('labelHiResAlbums') && Plugins::Qobuz::API::Common->getStreamingFormat($album) eq 'flac' ) {
+		$item->{name}  .= ' ' . cstring($client, 'PLUGIN_QOBUZ_HIRES');
+		$item->{line1} .= ' ' . cstring($client, 'PLUGIN_QOBUZ_HIRES');
 	}
 
 	# Enhancements to work/composer display for classical music (tags returned from Qobuz are all over the place)
-	if ( $track->{album}->{isClassique} ) {
+	if ( $album->{isClassique} ) {
 		if ( $track->{work} ) {
 			$item->{work} = $track->{work};
 		} else {
@@ -1663,8 +2024,8 @@ sub _trackItem {
 		$item->{line2} .= " - " . $item->{work} if $item->{work};
 	}
 
-	if ( $track->{album} ) {
-		$item->{year} = $track->{album}->{year} || substr($track->{$album}->{release_date_stream},0,4) || 0;
+	if ( $album ) {
+		$item->{year} = $album->{year} || substr($album->{release_date_stream},0,4) || 0;
 	}
 
 	if ( $prefs->get('parentalWarning') && $track->{parental_warning} ) {
@@ -1672,34 +2033,67 @@ sub _trackItem {
 		$item->{line1} .= ' [E]';
 	}
 
-	if (!$track->{streamable} && (!$prefs->get('playSamples') || !$track->{sampleable})) {
+	if ($album && $album->{released_at} && $album->{released_at} > time) {
+	#if ($track->{released_at} && $track->{released_at} > time) {
+		$item->{items} = [{
+			name => cstring($client, 'PLUGIN_QOBUZ_NOT_RELEASED'),
+			type => 'textarea'
+		}];
+	}
+	elsif (!$track->{streamable} && (!$prefs->get('playSamples') || !$track->{sampleable})) {
 		$item->{items} = [{
 			name => cstring($client, 'PLUGIN_QOBUZ_NOT_AVAILABLE'),
 			type => 'textarea'
 		}];
-		$item->{name}      = '* ' . $item->{name};
-		$item->{line1}     = '* ' . $item->{line1};
+		$item->{name}  = '* ' . $item->{name};
+		$item->{line1} = '* ' . $item->{line1};
 	}
 	else {
-		$item->{name}      = '* ' . $item->{name} if !$track->{streamable};
+		$item->{name}      = $item->{name} . ' *' if ! $track->{streamable};
 		$item->{line1}     = '* ' . $item->{line1} if !$track->{streamable};
+		#$item->{line2}     = $item->{line2} . ' *' if !$track->{streamable};
 		$item->{play}      = Plugins::Qobuz::API::Common->getUrl($client, $track);
 		$item->{on_select} = 'play';
 		$item->{playall}   = 1;
-	}
 
-	$item->{tracknum} = $track->{track_number};
+		my $items = [];
+
+		my $args = { trackId => $track->{id}, title => $item->{name},
+					 albumId => $album->{id}, album => $album->{title},
+					 artist => $artist,
+			};
+		
+		push @$items, _albumItem($client, $album);
+		
+		push @$items, {
+			name => cstring($client, 'PLUGIN_QOBUZ_CREDITS'),
+			items => [{name => _trackDetails($client, $track), type => 'textarea'}],
+		};
+		
+		push @$items, {
+			name => cstring($client, 'PLUGIN_QOBUZ_MANAGE_FAVORITES'),
+			url  => \&QobuzManageFavorites,
+			passthrough => [$args],
+		};
+		
+		$item->{items} = $items;
+	}
+	
+	$item->{tracknum}     = $track->{track_number};
 	$item->{media_number} = $track->{media_number};
-	$item->{media_count} = $track->{album}->{media_count};
+	$item->{media_count}  = $album->{media_count};
 	return $item;
 }
 
+#Sven called from track in playlist
 sub trackInfoMenu {
 	my ( $client, $url, $track, $remoteMeta, $tags ) = @_;
 
 	my $artist = $track->remote ? $remoteMeta->{artist} : $track->artistName;
 	my $album  = $track->remote ? $remoteMeta->{album}  : ( $track->album ? $track->album->name : undef );
 	my $title  = $track->remote ? $remoteMeta->{title}  : $track->title;
+	
+	$artist = (split /,/, $artist)[0]; #Sven 2022-05-03 somtimes a list of artists are received
 
 	my $items;
 
@@ -1788,44 +2182,13 @@ sub _objInfoHandler {
 	return $menu if $menu;
 }
 
-my $MAIN_ARTIST_RE = qr/MainArtist|\bPerformer\b|ComposerLyricist/i;
-my $ARTIST_RE = qr/Performer|Keyboards|Synthesizer|Vocal|Guitar|Lyricist|Composer|Bass|Drums|Percussion||Violin|Viola|Cello|Trumpet|Conductor|Trombone|Trumpet|Horn|Tuba|Flute|Euphonium|Piano|Orchestra|Clarinet|Didgeridoo|Cymbals|Strings|Harp/i;
-my $STUDIO_RE = qr/StudioPersonnel|Other|Producer|Engineer|Prod/i;
-
+#Sven - my version
 sub trackInfoMenuPerformers {
 	my ( $client, $url, $track, $remoteMeta, $tags ) = @_;
 
 	if ( $remoteMeta && (my $performers = $remoteMeta->{performers}) ) {
-		my @performers = map {
-			s/,?\s?(MainArtist|AssociatedPerformer|StudioPersonnel|ComposerLyricist)//ig;
-			s/,/:/;
-			{
-				name => $_,
-				type => 'text'
-			}
-		} sort {
-			return $a cmp $b if $a =~ $MAIN_ARTIST_RE && $b =~ $MAIN_ARTIST_RE;
-			return -1 if $a =~ $MAIN_ARTIST_RE;
-			return 1 if $b =~ $MAIN_ARTIST_RE;
-
-			return $a cmp $b if $a =~ $ARTIST_RE && $b =~ $ARTIST_RE;
-			return -1 if $a =~ $ARTIST_RE;
-			return 1 if $b =~ $ARTIST_RE;
-
-			return $a cmp $b if $a =~ $STUDIO_RE && $b =~ $STUDIO_RE;
-			return -1 if $a =~ $STUDIO_RE;
-			return 1 if $b =~ $STUDIO_RE;
-
-			return $a cmp $b;
-		} split(/ - /, $remoteMeta->{performers});
-
-		return {
-			name => cstring($client, 'PLUGIN_QOBUZ_PERFORMERS'),
-			items => \@performers,
-		};
+		return { name => cstring($client, 'PLUGIN_QOBUZ_CREDITS'), items => [{name => _trackDetails($client, $remoteMeta), type => 'textarea'}] };
 	}
-
-	return [];
 }
 
 sub trackInfoMenuBooklet {
@@ -1921,7 +2284,7 @@ sub _getGoodiesCLI {
 	}
 	else {
 		foreach (@$goodies) {
-			$request->addResultLoop('item_loop', $i, 'text', _localizeGoodies($client, $_->{name}));
+			$request->addResultLoop('item_loop', $i, 'text', _localizeGoodies($client, $_->{name}) . ' - ' . $_->{description}); #Sven 2022-05-01 add decription
 			$request->addResultLoop('item_loop', $i, 'weblink', $_->{url});
 			$i++;
 		}
@@ -1933,6 +2296,7 @@ sub _getGoodiesCLI {
 	$request->setStatusDone();
 }
 
+#Sven
 sub searchMenu {
 	my ( $client, $tags ) = @_;
 
@@ -1943,6 +2307,7 @@ sub searchMenu {
 		items => [{
 			name  => cstring($client, 'ALBUMS'),
 			url   => \&QobuzSearch,
+			type  => 'albums', #Sven - view type
 			image => 'html/images/albums.png',
 			passthrough => [{
 				q        => $searchParam,
@@ -1951,6 +2316,7 @@ sub searchMenu {
 		},{
 			name  => cstring($client, 'ARTISTS'),
 			url   => \&QobuzSearch,
+			type  => 'artists', #Sven - view type
 			image => 'html/images/artists.png',
 			passthrough => [{
 				q        => $searchParam,
@@ -1959,6 +2325,7 @@ sub searchMenu {
 		},{
 			name  => cstring($client, 'SONGS'),
 			url   => \&QobuzSearch,
+			type  => 'playlist', #Sven - view type
 			image => 'html/images/playlists.png',
 			passthrough => [{
 				q        => $searchParam,
@@ -1967,6 +2334,7 @@ sub searchMenu {
 		},{
 			name  => cstring($client, 'PLAYLISTS'),
 			url   => \&QobuzSearch,
+			type  => 'playlists', #Sven - view type
 			image => 'html/images/playlists.png',
 			passthrough => [{
 				q        => $searchParam,
@@ -1976,6 +2344,7 @@ sub searchMenu {
 	};
 }
 
+#Sven - ab hier ist der Kode bisher identisch mit der Veriosn von Michael Herger
 sub cliQobuzPlayAlbum {
 	my $request = shift;
 

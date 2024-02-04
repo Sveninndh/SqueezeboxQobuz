@@ -45,6 +45,12 @@
 		[% END; END %]
 
 		<hr class="sub-sep"/>
+		[% WRAPPER settingGroup title="PLUGIN_QOBUZ_SHOW_USERPURCHASES" desc="" %]
+			<select name="pref_showUserPurchases" id="showUserPurchases">
+				<option [% prefs.showUserPurchases ? "selected" : "" %] value="1" >[% "YES" | string %]</option>
+				<option [% prefs.showUserPurchases ? "" : "selected" %] value="0" >[% "NO" | string %]</option>
+			</select>
+		[% END %]
 
 		[% WRAPPER settingGroup title="PLUGIN_QOBUZ_SHOW_COMPOSER_WITH_ARTIST" desc="" %]
 			<select name="pref_showComposerWithArtist" id="showComposerWithArtist">
@@ -58,6 +64,13 @@
 				<option [% prefs.sortFavsAlphabetically ? "" : "selected" %] value="0" >[% "PLUGIN_QOBUZ_SORT_FAVORITES_DEFAULT" | string %]</option>
 				<option [% prefs.sortFavsAlphabetically == 1 ? "selected" : "" %] value="1" >[% "PLUGIN_QOBUZ_SORT_FAVORITES_ALPHA" | string %]</option>
 				<option [% prefs.sortFavsAlphabetically == 2 ? "selected" : "" %] value="2" >[% "PLUGIN_QOBUZ_SORT_FAVORITE_ALBUMS_ALPHA" | string %]</option>
+			</select>
+		[% END %]
+
+		[% WRAPPER settingGroup title="PLUGIN_QOBUZ_SORT_PLAYLISTS" desc="" %]
+			<select name="pref_sortUserPlaylists" id="sortUserPlaylists">
+				<option [% prefs.sortUserPlaylists ? "" : "selected" %] value="0" >[% "PLUGIN_QOBUZ_SORT_PLAYLISTS_DEFAULT" | string %]</option>
+				<option [% prefs.sortUserPlaylists == 1 ? "selected" : "" %] value="1" >[% "PLUGIN_QOBUZ_SORT_PLAYLISTS_ALPHA" | string %]</option>
 			</select>
 		[% END %]
 
@@ -120,7 +133,7 @@
 			</select>
 		[% END %]
 
-		[% WRAPPER settingGroup title="PLUGIN_QOBUZ_PREFS_FORMAT" desc="" %]
+		[% WRAPPER settingGroup title="PLUGIN_QOBUZ_PREFS_FORMAT" desc="PLUGIN_QOBUZ_PREFS_FORMAT_DESC" %]
 			<select name="pref_preferredFormat" id="preferredFormat">
 			  <option [% prefs.preferredFormat == "5" ? "selected" : "" %] value="5" >MP3 320 kbps </option>
 			  <option [% prefs.preferredFormat == "6" ? "selected" : "" %] value="6" >FLAC 16 bits / 44.1 kHz</option>
