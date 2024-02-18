@@ -235,6 +235,22 @@ sub getArtist {
 	});
 }
 
+sub getLabel {
+	my ($self, $cb, $labelId) = @_;
+
+	$self->_get('label/get', sub {
+		my $results = shift;
+
+		$results->{albums}->{items} = _precacheAlbum($results->{albums}->{items}) if $results->{albums};
+
+		$cb->($results) if $cb;
+	}, {
+		label_id => $labelId,
+		extra     => 'albums',
+		limit     => QOBUZ_DEFAULT_LIMIT,
+	});
+}
+
 sub getArtistPicture {
 	my ($self, $artistId) = @_;
 
@@ -268,18 +284,6 @@ sub getGenres {
 
 	$self->_get('genre/list', $cb, $params);
 }
-
-=head #Sven wird nicht mehr benötigt, der Paramter 'extra' wird der Qobuz-API nicht mehr unterstützt, wurde früher von QobuzGenre aufgerufen, 
-sub getGenre {
-	my ($self, $cb, $genreId) = @_;
-
-	$self->_get('genre/get', $cb, {
-		genre_id => $genreId,
-		extra => 'subgenresCount,albums',
-		_ttl  => QOBUZ_EDITORIAL_EXPIRY,
-	});
-}
-=cut
 
 #Sven 2022-05-23 neuer Parameter 'extra' und eine Optimierung
 sub getAlbum {
