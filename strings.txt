@@ -294,18 +294,13 @@ PLUGIN_QOBUZ_PERFORMERS
 
 PLUGIN_QOBUZ_MYWEEKLYQ
 	EN	My weekly Q
+	FR	Mon Qobuz Hebdo
 
 PLUGIN_QOBUZ_REAUTH_DESC
 	DE	Leider müssen Sie sich erneut bei Qobuz anmelden. Sie können das gleich hier erledigen, oder in den LMS Einstellungen/Erweitert/Qobuz das Konto entfernen und neu anmelden.
 	EN	Unfortunately we need to re-authenticate with Qobuz. You can enter your password here, or go to LMS/Settings/Advanced/Qobuz to remove and add again your account.
-	FR	Malheureusement, vous devez vous reconnecter à Qobuz. Vous pouvez le faire ici, ou supprimer le compte et vous reconnecter dans Paramètres LMS/Avancé/Qobuz.
+	FR	Malheureusement, vous devez vous réauthentifier auprès de Qobuz. Vous pouvez le faire ici, ou supprimer le compte et vous reconnecter dans les réglages du plugin Qobuz.
 	NL	Helaas moet je dan opnieuw inloggen op Qobuz. Je kunt dit hier doen, of het account verwijderen en opnieuw inloggen in de LMS Instellingen/Geavanceerd/Qobuz.
-
-PLUGIN_QOBUZ_SHOW_USERPURCHASES
-	DE	Meine Einkäufe anzeigen
-	EN	Show my purchases
-	FR	Afficher mes achats
-	NL	Laat mijn aankopen zien
 
 PLUGIN_QOBUZ_SHOW_COMPOSER_WITH_ARTIST
 	DE	Komponisten mit Interpret anzeigen
@@ -710,6 +705,12 @@ PLUGIN_QOBUZ_MORE_PLAYLISTS_FROM
 	EN	More playlists from
 	FR	Plus de listes de lecture de
 	NL	Meer afspeellijsten van
+
+PLUGIN_QOBUZ_SHOW_USERPURCHASES
+	DE	Meine Einkäufe anzeigen
+	EN	Show my purchases
+	FR	Afficher mes achats
+	NL	Laat mijn aankopen zien
 
 PLUGIN_QOBUZ_ALL_PLAYLISTS
 	DE	Alle
