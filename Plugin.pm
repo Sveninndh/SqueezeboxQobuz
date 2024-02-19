@@ -366,12 +366,6 @@ sub handleFeed {
 		type  => 'menu', #Sven - view type
 		image => 'html/images/playlists.png',
 		passthrough => [{ type => 'editor-picks' }]
-#	},{
-#		name => cstring($client, 'PLUGIN_QOBUZ_LATESTPLAYLISTS'),
-#		url  => \&QobuzPublicPlaylists,
-#		image => 'html/images/playlists.png',
-#		type  => 'playlists', #Sven - view type
-#		passthrough => [{ type => 'last-created', tags => 'all' }]
 	},{
 		name => cstring($client, 'PLUGIN_QOBUZ_USERPLAYLISTS'),
 		type  => 'playlists', #Sven - view type
