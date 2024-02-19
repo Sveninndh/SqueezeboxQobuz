@@ -1,4 +1,4 @@
-# String file for Qobuz plugin 20.16.10 - Enhancements from SvenInNdh
+# String file for Qobuz plugin 30.2.0 - Enhancements from SvenInNdh
 
 PLUGIN_QOBUZ
 	EN	Qobuz
@@ -201,12 +201,6 @@ PLUGIN_QOBUZ_PUBLICPLAYLISTS
 	FR	Listes de Lecture Qobuz
 	NL	Qobuz Afspeellijsten
 
-PLUGIN_QOBUZ_LATESTPLAYLISTS
-	DE	Neueste Playlisten
-	EN	Latest Playlists
-	FR	Dernières listes de lecture
-	NL	Laatste afspeellijsten
-
 PLUGIN_ON_QOBUZ
 	DE	Auf Qobuz
 	EN	On Qobuz
@@ -292,11 +286,11 @@ PLUGIN_QOBUZ_BOOKLET
 	NL	Boekje
 
 PLUGIN_QOBUZ_PERFORMERS
-	DE	Credits
-	EN	Credits
-	FR	Crédits
-	NL	Credits
-	ES	Créditos
+	DE	Mitwirkende
+	EN	Contributors
+	FR	Contributeurs
+	NL	Bijdragers
+	ES	Colaboradores
 
 PLUGIN_QOBUZ_MYWEEKLYQ
 	EN	My weekly Q
@@ -716,6 +710,13 @@ PLUGIN_QOBUZ_MORE_PLAYLISTS_FROM
 	EN	More playlists from
 	FR	Plus de listes de lecture de
 	NL	Meer afspeellijsten van
+
+PLUGIN_QOBUZ_ALL_PLAYLISTS
+	DE	Alle
+	EN	All
+	FR	Tous
+	NL	Alle
+	ES	Todo
 
 PLUGIN_QOBUZ_FOCUS
 	DE	Focus

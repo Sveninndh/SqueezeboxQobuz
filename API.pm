@@ -1,6 +1,6 @@
 package Plugins::Qobuz::API;
 
-#Sven 2024-01-27 enhancements version 30.1.0
+#Sven 2024-02-19 enhancements version 30.2.0
 # All changes are marked with "#Sven" in source code
 # 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
 # 2022-05-12 fix in function getPublicPlaylists()
@@ -418,32 +418,8 @@ sub getUserFavorites {
 		$cb->($favorites);
 	}, {
 		limit => QOBUZ_USERDATA_LIMIT,
-		type => $type, #Sven - Parameter für Qobuz API 'favorite/getUserFavorites'
+		type  => $type, #Sven - Parameter für Qobuz API 'favorite/getUserFavorites'
 		_extractor => $type, #Sven - Parameter für _pagingGet()
-		#_extractor => sub {
-		#	my ($favorites) = @_;
-		#	my $collectedFavorites;
-		
-		#	map {
-		#		my $offset = $_;
-		#		if ($collectedFavorites) {
-		#			foreach my $category (qw(albums artists tracks)) {
-		#				push @{$collectedFavorites->{$category}->{items}}, @{$favorites->{$offset}->{$category}->{items}};
-		#			}
-		#		}
-		#		else {
-		#			$collectedFavorites = $favorites->{$offset};
-		#		}
-		#	} sort {
-		#		$a <=> $b
-		#	} keys %$favorites;
-			
-		#	return $collectedFavorites;
-		#},
-		_maxKey   => sub {
-			my ($favorites) = @_;
-			return max($favorites->{albums}->{total}, $favorites->{artists}->{total}, $favorites->{tracks}->{total});
-		},
 		_ttl       => QOBUZ_USER_DATA_EXPIRY,
 		_use_token => 1,
 		_wipecache => $force,
@@ -539,23 +515,24 @@ sub getSimilarPlaylists {
 	});
 }
 
-#Sven 2022-05-12 fix
+#Sven 2024-02-18 ab hier bis zum Ende ist der Kode identisch mit der Originalversion von Michael Herger
 sub getPublicPlaylists {
 	my ($self, $cb, $type, $genreId, $tags) = @_;
 
 	my $args = {
 		type  => $type =~ /(?:last-created|editor-picks)/ ? $type : 'editor-picks',
-		limit => 100,		# for whatever reason this query doesn't accept more than 100 results
-		_ttl  => QOBUZ_EDITORIAL_EXPIRY,
+		limit => QOBUZ_USERDATA_LIMIT,
+		_ttl  => QOBUZ_USER_DATA_EXPIRY, #QOBUZ_EDITORIAL_EXPIRY,
+		_extractor => 'playlists',
+		_use_token => 1,
 	};
 
-	$args->{genre_id} = $genreId if $genreId; #Sven 2022-05-12 changed from $args->{genre_ids} to $args->{genre_id}
+	$args->{genre_ids} = $genreId if $genreId;
 	$args->{tags} = $tags if $tags;
 
-	$self->_get('playlist/getFeatured', $cb, $args);
+	$self->_pagingGet('playlist/getFeatured', $cb, $args); 
 }
 
-#Sven 2024-01-11 ab hier bis zum Ende ist der Kode identisch mit der Originalversion von Michael Herger
 sub getPlaylistTracks {
 	my ($self, $cb, $playlistId) = @_;
 
@@ -570,10 +547,6 @@ sub getPlaylistTracks {
 		extra       => 'tracks',
 		limit       => QOBUZ_USERDATA_LIMIT,
 		_extractor  => 'tracks',
-		_maxKey     => sub {
-			my ($results) = @_;
-			$results->{tracks_count};
-		},
 		_ttl        => QOBUZ_USER_DATA_EXPIRY,
 		_use_token  => 1,
 	});
@@ -860,15 +833,21 @@ sub _pagingGet {
 
 	my $limit = $params->{limit};
 	$params->{limit} = min($params->{limit}, QOBUZ_LIMIT);
+	
+	my $extractor = ref $params->{_extractor} ? '' : $params->{_extractor};
 
-	my $getMaxFn = ref $params->{_maxKey} ? delete $params->{_maxKey} : sub {
-		my ($results) = @_;
-		$results->{$params->{_maxKey}}->{total};
+	my $getMaxFn = ref $params->{_maxKey} ? $params->{_maxKey} : sub {
+		my $results = shift;
+		$results->{$params->{_maxKey} || $extractor}->{total};
+	};
+	
+	my $getLimitFn = ref $params->{_limitKey} ? $params->{_limitKey} : sub {
+		my $results = shift;
+		$results->{$params->{_limitKey} || $extractor}->{limit};
 	};
 
-	my $extractorFn = ref $params->{_extractor} ? delete $params->{_extractor} : sub {
+	my $extractorFn = ref $params->{_extractor} ? $params->{_extractor} : sub {
 		my ($results) = @_;
-		my $extractor = $params->{_extractor};
 
 		my $collector;
 		map {
@@ -885,10 +864,16 @@ sub _pagingGet {
 		return $collector;
 	};
 
+	delete $params->{_extractor};
+	delete $params->{_limitKey};
+	delete $params->{_maxKey};
+
 	$self->_get($url, sub {
 		my ($result) = @_;
 
 		my $total = $getMaxFn->($result) || QOBUZ_LIMIT;
+		my $count = $getLimitFn->($result) || $params->{limit};
+		$params->{limit} = $count if ( $count < $params->{limit} );
 
 		main::DEBUGLOG && $log->is_debug && $log->debug("Need another page? " . Data::Dump::dump({
 			total => $total,
