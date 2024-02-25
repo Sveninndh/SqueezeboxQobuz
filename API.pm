@@ -833,23 +833,6 @@ sub _pagingGet {
 	my $limitTotal = $params->{limit};
 	my $limitPage  = $params->{limit} = min($params->{limit}, QOBUZ_LIMIT);
 
-	my $extractorFn = sub {
-		my ($results) = @_;
-
-		my $collector;
-		map {
-			if ($collector) {
-				push @{$collector->{$type}->{items}}, @{$results->{$_}->{$type}->{items}};
-			}
-			else {
-				$collector = $results->{$_};
-			}
-		} sort {
-			$a <=> $b
-		} keys %$results;
-		return $collector;
-	};
-
 	$self->_get($url, sub {
 		my ($result) = @_;
 
@@ -862,34 +845,22 @@ sub _pagingGet {
 			pageSize  => $limitPage,
 			requested => $limitTotal
 		}));
-		
-		my $results = {
-				0 => $result
-			};
 
 		if ($total > $limitPage && $limitTotal > $limitPage) {
-			my $chunks = {};
-
-			for (my $offset = $limitPage; $offset <= min($total, $limitTotal); $offset += $limitPage) {
-				my $params2 = Storable::dclone($params);
-				$params2->{offset} = $offset;
-				$chunks->{$offset} = $params2;
-			}
-
-			while (my ($id, $params) = each %$chunks) {
+			my $pageFn = sub {
+				my ($cb) = @_;
+				$params->{offset} += $limitPage;
 				$self->_get($url, sub {
-					$results->{$id} = shift;
-					delete $chunks->{$id};
-
-					if (!scalar keys %$chunks) {
-						$cb->($extractorFn->($results));
-					}
+					my ($page) = @_;
+					$page = $page->{$type};
+					push @{$result->{$type}->{items}}, @{$page->{items}};
+					$cb->($cb) if ($page->{limit} + $page->{offset} < $page->{total});
 				}, $params);
-			}
+			};
+			
+			$pageFn->($pageFn);
 		}
-		else {
-			$cb->($extractorFn->($results));
-		}
+		$cb->($result);
 	}, $params);
 }
 
