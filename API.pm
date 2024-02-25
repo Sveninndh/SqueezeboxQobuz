@@ -1,6 +1,6 @@
 package Plugins::Qobuz::API;
 
-#Sven 2024-02-19 enhancements version 30.2.0
+#Sven 2024-02-25 enhancements version 30.2.0
 # All changes are marked with "#Sven" in source code
 # 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
 # 2022-05-12 fix in function getPublicPlaylists()
@@ -419,11 +419,10 @@ sub getUserFavorites {
 	}, {
 		limit => QOBUZ_USERDATA_LIMIT,
 		type  => $type, #Sven - Parameter für Qobuz API 'favorite/getUserFavorites'
-		_extractor => $type, #Sven - Parameter für _pagingGet()
 		_ttl       => QOBUZ_USER_DATA_EXPIRY,
 		_use_token => 1,
 		_wipecache => $force,
-	});
+	}, $type);
 }
 
 #Sven 2022-05-13 add
@@ -523,14 +522,13 @@ sub getPublicPlaylists {
 		type  => $type =~ /(?:last-created|editor-picks)/ ? $type : 'editor-picks',
 		limit => QOBUZ_USERDATA_LIMIT,
 		_ttl  => QOBUZ_EDITORIAL_EXPIRY,
-		_extractor => 'playlists',
 		_use_token => 1,
 	};
 
 	$args->{genre_ids} = $genreId if $genreId;
 	$args->{tags} = $tags if $tags;
 
-	$self->_pagingGet('playlist/getFeatured', $cb, $args); 
+	$self->_pagingGet('playlist/getFeatured', $cb, $args, 'playlists'); 
 }
 
 sub getPlaylistTracks {
@@ -546,10 +544,9 @@ sub getPlaylistTracks {
 		playlist_id => $playlistId,
 		extra       => 'tracks',
 		limit       => QOBUZ_USERDATA_LIMIT,
-		_extractor  => 'tracks',
 		_ttl        => QOBUZ_USER_DATA_EXPIRY,
 		_use_token  => 1,
-	});
+	}, 'tracks');
 }
 
 sub getTags {
@@ -829,30 +826,20 @@ sub _get {
 }
 
 sub _pagingGet {
-	my ( $self, $url, $cb, $params ) = @_;
+	my ( $self, $url, $cb, $params, $type ) = @_;
 
-	my $limit = $params->{limit};
-	$params->{limit} = min($params->{limit}, QOBUZ_LIMIT);
-	
-	my $extractor = ref $params->{_extractor} ? '' : $params->{_extractor};
+	return {} unless $type;
 
-	my $getMaxFn = ref $params->{_maxKey} ? $params->{_maxKey} : sub {
-		my $results = shift;
-		$results->{$params->{_maxKey} || $extractor}->{total};
-	};
-	
-	my $getLimitFn = ref $params->{_limitKey} ? $params->{_limitKey} : sub {
-		my $results = shift;
-		$results->{$params->{_limitKey} || $extractor}->{limit};
-	};
+	my $limitTotal = $params->{limit};
+	my $limitPage  = $params->{limit} = min($params->{limit}, QOBUZ_LIMIT);
 
-	my $extractorFn = ref $params->{_extractor} ? $params->{_extractor} : sub {
+	my $extractorFn = sub {
 		my ($results) = @_;
 
 		my $collector;
 		map {
 			if ($collector) {
-				push @{$collector->{$extractor}->{items}}, @{$results->{$_}->{$extractor}->{items}};
+				push @{$collector->{$type}->{items}}, @{$results->{$_}->{$type}->{items}};
 			}
 			else {
 				$collector = $results->{$_};
@@ -860,40 +847,34 @@ sub _pagingGet {
 		} sort {
 			$a <=> $b
 		} keys %$results;
-
 		return $collector;
 	};
-
-	delete $params->{_extractor};
-	delete $params->{_limitKey};
-	delete $params->{_maxKey};
 
 	$self->_get($url, sub {
 		my ($result) = @_;
 
-		my $total = $getMaxFn->($result) || QOBUZ_LIMIT;
-		my $count = $getLimitFn->($result) || $params->{limit};
-		$params->{limit} = $count if ( $count < $params->{limit} );
+		my $total  = $result->{$type}->{total} || QOBUZ_LIMIT;
+		my $count  = $result->{$type}->{limit} || $limitPage;
+		$limitPage = $params->{limit} = $count if ( $count < $limitPage );
 
 		main::DEBUGLOG && $log->is_debug && $log->debug("Need another page? " . Data::Dump::dump({
 			total => $total,
-			pageSize => $params->{limit},
-			requested => $limit
+			pageSize  => $limitPage,
+			requested => $limitTotal
 		}));
-
-		if ($total > $params->{limit} && $limit > $params->{limit}) {
-			my $chunks = {};
-
-			for (my $offset = $params->{limit}; $offset <= min($total, $limit); $offset += $params->{limit}) {
-				my $params2 = Storable::dclone($params);
-				$params2->{offset} = $offset;
-
-				$chunks->{$offset} = $params2;
-			}
-
-			my $results = {
+		
+		my $results = {
 				0 => $result
 			};
+
+		if ($total > $limitPage && $limitTotal > $limitPage) {
+			my $chunks = {};
+
+			for (my $offset = $limitPage; $offset <= min($total, $limitTotal); $offset += $limitPage) {
+				my $params2 = Storable::dclone($params);
+				$params2->{offset} = $offset;
+				$chunks->{$offset} = $params2;
+			}
 
 			while (my ($id, $params) = each %$chunks) {
 				$self->_get($url, sub {
@@ -907,7 +888,7 @@ sub _pagingGet {
 			}
 		}
 		else {
-			$cb->($extractorFn->({ 0 => $result }));
+			$cb->($extractorFn->($results));
 		}
 	}, $params);
 }
