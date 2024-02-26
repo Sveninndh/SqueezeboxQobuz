@@ -972,10 +972,9 @@ sub QobuzUserFavorites {
 		my $items = [];
 		my @aItem = @{$favorites->{$type}->{items}};
 		if (scalar @aItem) {
-			if ($type eq 'albums')     { for my $item ( @aItem ) { push @$items, _albumItem($client, $item); }; }
-			elsif ($type eq 'tracks')  { for my $item ( @aItem ) { push @$items, _trackItem($client, $item); }; }
-			elsif ($type eq 'artists') { for my $item ( @aItem ) { push @$items, _artistItem($client, $item, 'withIcon'); }; }
-			
+			my $itenFn = ($type eq 'albums') ? \&_albumItem : ($type eq 'tracks') ? \&_trackItem : \&_artistItem;
+			foreach ( @aItem ) { push @$items, $itenFn->($client, $_, 1); };
+
 			my $sortFavsAlphabetically = $prefs->get('sortFavsAlphabetically') || 0;
 			if ( $sortFavsAlphabetically ) {
 				my $sortFields = { albums => ['line1', 'name'], artists => ['name', 'name'], tracks => ['line1', 'line2'] };
