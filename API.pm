@@ -1,6 +1,6 @@
 package Plugins::Qobuz::API;
 
-#Sven 2024-02-25 enhancements version 30.2.0
+#Sven 2024-02-19 enhancements version 30.2.0
 # All changes are marked with "#Sven" in source code
 # 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
 # 2022-05-12 fix in function getPublicPlaylists()
@@ -15,6 +15,7 @@ package Plugins::Qobuz::API;
 # 2022-05-23 added function getSimilarPlaylists()
 # 2023-10-07 Update of app_id handling
 # 2023-10-09 add sort configuration for function getUserPlaylists()
+# 2024-03-01 _pagingGet() optimisations, no limitations for albums, artists, tracks, playlists and search
 
 use strict;
 use base qw(Slim::Utils::Accessor);
@@ -157,7 +158,7 @@ sub updateUserdata {
 sub getMyWeekly {
 	my ($self, $cb) = @_;
 
-	$self->_get('dynamic-tracks/get', sub {
+	$self->_pagingGet('dynamic-tracks/get', sub {
 		my $myWeekly = shift;
 
 		$myWeekly->{tracks}->{items} = _precacheTracks($myWeekly->{tracks}->{items} || []) if $myWeekly->{tracks};
@@ -166,11 +167,10 @@ sub getMyWeekly {
 	}, {
 		type        => 'weekly',
 		limit       => 50,
-		offset      => 0,
-		_ttl        => 60 * 60 * 12,
+		_ttl        => QOBUZ_EDITORIAL_EXPIRY * 12,
 		_use_token  => 1,
 		_cid        => 1,
-	});
+	}, 'tracks');
 }
 
 sub search {
@@ -189,12 +189,12 @@ sub search {
 		return;
 	}
 
-	$args->{limit} ||= QOBUZ_DEFAULT_LIMIT;
+	$args->{limit} ||= QOBUZ_USERDATA_LIMIT;
 	$args->{_ttl}  ||= QOBUZ_EDITORIAL_EXPIRY;
 	$args->{query} ||= $search;
-	$args->{type}  ||= $type if $type && $type =~ /(?:albums|artists|tracks|playlists)/;
+	$args->{type}  ||= $type if $type =~ /(?:albums|artists|tracks|playlists)/;
 
-	$self->_get('catalog/search', sub {
+	$self->_pagingGet('catalog/search', sub {
 		my $results = shift;
 
 		if ( !$args->{_dontPreCache} ) {
@@ -208,7 +208,7 @@ sub search {
 		$cache->set($key, $results, 300);
 
 		$cb->($results);
-	}, $args);
+	}, $args, $type);
 }
 
 #Sven 2020-03-30 new parameter $noalbums, if it is not undef, getArtist returns no extra album information.
@@ -238,7 +238,7 @@ sub getArtist {
 sub getLabel {
 	my ($self, $cb, $labelId) = @_;
 
-	$self->_get('label/get', sub {
+	$self->_pagingGet('label/get', sub {
 		my $results = shift;
 
 		$results->{albums}->{items} = _precacheAlbum($results->{albums}->{items}) if $results->{albums};
@@ -247,8 +247,9 @@ sub getLabel {
 	}, {
 		label_id => $labelId,
 		extra     => 'albums',
-		limit     => QOBUZ_DEFAULT_LIMIT,
-	});
+		limit     => QOBUZ_USERDATA_LIMIT,
+		_ttl      => QOBUZ_EDITORIAL_EXPIRY,
+	}, 'albums');
 }
 
 sub getArtistPicture {
@@ -264,7 +265,7 @@ sub getArtistPicture {
 sub getSimilarArtists {
 	my ($self, $cb, $artistId) = @_;
 
-	$self->_get('artist/getSimilarArtists', sub {
+	$self->_pagingGet('artist/getSimilarArtists', sub {
 		my $results = shift;
 
 		$self->_precacheArtistPictures($results->{artists}->{items}) if $results && $results->{artists};
@@ -272,8 +273,8 @@ sub getSimilarArtists {
 		$cb->($results);
 	}, {
 		artist_id => $artistId,
-		limit     => 100,	# max. is 100
-	});
+		limit     => QOBUZ_USERDATA_LIMIT,	# max. is 100
+	}, 'artists');
 }
 
 sub getGenres {
@@ -317,42 +318,18 @@ sub getFeaturedAlbums {
 
 	my $args = {
 		type     => $type,
-		limit    => QOBUZ_DEFAULT_LIMIT,
+		limit    => QOBUZ_USERDATA_LIMIT,
 		_ttl     => QOBUZ_EDITORIAL_EXPIRY,
 	};
 
 	$args->{genre_id} = $genreId if $genreId;
 
-	$self->_get('album/getFeatured', sub {
+	$self->_pagingGet('album/getFeatured', sub {
 		my $albums = shift;
 
 		$albums->{albums}->{items} = _precacheAlbum($albums->{albums}->{items}) if $albums->{albums};
 		$cb->($albums);
-	}, $args);
-}
-
-#Sven 2022-05-23 add
-sub getLabelAlbums {
-	my ($self, $cb, $labelid) = @_;
-	
-	# extra => 'albums', 'focus', 'focusAll' oder 'albums,focus'
-
-	my $args = {
-		label_id => $labelid,
-		extra    => 'albums',
-		limit    => QOBUZ_DEFAULT_LIMIT,
-		_ttl     => QOBUZ_EDITORIAL_EXPIRY,
-	};
-
-	$self->_get('label/get', sub {
-		my $label = shift;
-		
-		#$log->error(Data::Dump::dump($label));
-
-		$label->{albums}->{items} = _precacheAlbum($label->{albums}->{items}) if $label->{albums};
-
-		$cb->($label);
-	}, $args);
+	}, $args, 'albums');
 }
 
 sub getUserPurchases {
@@ -483,7 +460,7 @@ sub getUserPlaylists {
 		};
 	};
 
-	$self->_get('playlist/getUserPlaylists', $sort, $myArgs);
+	$self->_pagingGet('playlist/getUserPlaylists', $sort, $myArgs, 'playlists');
 
 }
 
@@ -505,13 +482,13 @@ sub doPlaylistCommand {
 sub getSimilarPlaylists {
 	my ($self, $cb, $playlistId) = @_;
 	
-	$self->_get('playlist/get', $cb, {
+	$self->_pagingGet('playlist/get', $cb, {
 		playlist_id => $playlistId,
 		extra       => 'getSimilarPlaylists',
 		limit    => QOBUZ_USERDATA_LIMIT,
 		_ttl     => QOBUZ_USER_DATA_EXPIRY,
 		_use_token => 1,
-	});
+	}, 'playlists');
 }
 
 #Sven 2024-02-18 ab hier bis zum Ende ist der Kode identisch mit der Originalversion von Michael Herger
@@ -836,8 +813,8 @@ sub _pagingGet {
 	$self->_get($url, sub {
 		my ($result) = @_;
 
-		my $total  = $result->{$type}->{total} || QOBUZ_LIMIT;
 		my $count  = $result->{$type}->{limit} || $limitPage;
+		my $total  = $result->{$type}->{total} || $count;
 		$limitPage = $params->{limit} = $count if ( $count < $limitPage );
 
 		main::DEBUGLOG && $log->is_debug && $log->debug("Need another page? " . Data::Dump::dump({
@@ -847,20 +824,49 @@ sub _pagingGet {
 		}));
 
 		if ($total > $limitPage && $limitTotal > $limitPage) {
-			my $pageFn = sub {
-				my ($cb) = @_;
-				$params->{offset} += $limitPage;
-				$self->_get($url, sub {
-					my ($page) = @_;
-					$page = $page->{$type};
-					push @{$result->{$type}->{items}}, @{$page->{items}};
-					$cb->($cb) if ($page->{limit} + $page->{offset} < $page->{total});
-				}, $params);
+			my $chunks = {};
+
+			for (my $offset = $limitPage; $offset <= min($total, $limitTotal); $offset += $limitPage) {
+				my $params2 = Storable::dclone($params);
+				$params2->{offset} = $offset;
+				$chunks->{$offset} = $params2;
+			}
+
+			my $extractorFn = sub {
+				my ($results) = @_;
+
+				my $collector;
+				map {
+					if ($collector) {
+						push @{$collector->{$type}->{items}}, @{$results->{$_}->{$type}->{items}};
+					}
+					else {
+						$collector = $results->{$_};
+					}
+				} sort {
+					$a <=> $b
+				} keys %$results;
+
+				return $collector;
 			};
-			
-			$pageFn->($pageFn);
+
+			my $results = {
+				0 => $result
+			};
+
+			while (my ($id, $params) = each %$chunks) {
+				$self->_get($url, sub {
+					$results->{$id} = shift;
+					delete $chunks->{$id};
+					if (!scalar keys %$chunks) {
+						$cb->($extractorFn->($results));
+					}
+				}, $params);
+			}
 		}
-		$cb->($result);
+		else {
+			$cb->($result);
+		}
 	}, $params);
 }
 

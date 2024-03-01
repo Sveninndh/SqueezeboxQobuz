@@ -1,5 +1,5 @@
 =head Infos
-Sven 2024-02-19 enhancements based on version 1.400 up to 3.2.0
+Sven 2024-03-01 enhancements based on version 1.400 up to 3.2.0
  1. included a new album information menu befor playing the album
 	It shows: Samplesize, Samplerate, Genre, Duration, Description if present, Goodies (Booklet) if present,
 	trackcount, Credits including performers, Conductor if present, Artist, Composer, ReleaseDate, Label (with label albums),
@@ -972,8 +972,8 @@ sub QobuzUserFavorites {
 		my $items = [];
 		my @aItem = @{$favorites->{$type}->{items}};
 		if (scalar @aItem) {
-			my $itenFn = ($type eq 'albums') ? \&_albumItem : ($type eq 'tracks') ? \&_trackItem : \&_artistItem;
-			foreach ( @aItem ) { push @$items, $itenFn->($client, $_, 1); };
+			my $itemFn = ($type eq 'albums') ? \&_albumItem : ($type eq 'tracks') ? \&_trackItem : \&_artistItem;
+			foreach ( @aItem ) { push @$items, $itemFn->($client, $_, 1); };
 
 			my $sortFavsAlphabetically = $prefs->get('sortFavsAlphabetically') || 0;
 			if ( $sortFavsAlphabetically ) {
@@ -1082,7 +1082,7 @@ sub QobuzUserPlaylists {
 	my ($client, $cb, $params, $args) = @_;
 
 	getAPIHandler($client)->getUserPlaylists(sub {
-		_playlistCallback(shift, $cb, 'showOwner', $params->{isWeb});
+		_playlistCallback(shift, $cb, 'showOwner', $params->{isWeb}, 'sort');
 	}, $args); #Sven 2022-05-23
 }
 
@@ -1148,7 +1148,7 @@ sub QobuzPublicPlaylists {
 
 #Sven 2022-05-23
 sub _playlistCallback {
-	my ($searchResult, $cb, $showOwner, $isWeb) = @_;
+	my ($searchResult, $cb, $showOwner, $isWeb, $cmd) = @_;
 
 	#$log->error(Data::Dump::dump($searchResult));
 	$searchResult = ($searchResult->{playlists}) ? $searchResult->{playlists} : $searchResult->{similarPlaylist}; #Sven 2022-05-23
@@ -1158,6 +1158,13 @@ sub _playlistCallback {
 	for my $playlist ( @{$searchResult->{items}} ) {
 		next if defined $playlist->{tracks_count} && !$playlist->{tracks_count};
 		push @$playlists, _playlistItem($playlist, $showOwner, $isWeb);
+	}
+
+	if ($cmd eq 'sort') {
+		my $sortUserPlaylists = $prefs->get('sortUserPlaylists') || 0;
+		if ( $sortUserPlaylists ) {
+			@$playlists = sort { Slim::Utils::Text::ignoreCaseArticles($a->{name}) cmp Slim::Utils::Text::ignoreCaseArticles($b->{name}) } @$playlists;
+		};
 	}
 
 	$cb->( {
