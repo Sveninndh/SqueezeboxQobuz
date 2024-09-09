@@ -1,17 +1,15 @@
 package Plugins::Qobuz::API;
 
-#Sven 2024-02-19 enhancements version 30.2.0
+#Sven 2024-03-02 enhancements version 30.2.5
 # All changes are marked with "#Sven" in source code
 # 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
-# 2022-05-12 fix in function getPublicPlaylists()
 # 2022-05-13 added function setFavorite()
 # 2022-05-13 added function getFavoriteStatus()
-# 2022-05-13 add filter parameter for function getUserPlaylists()
 # 2022-05-14 added function doPlaylistCommand()
 # 2022-05-20 added MyWeekly playlist
 # 2022-05-20 new parameter $type for getUserFavorites()
 # 2022-05-23 getAlbum() new parameter 'extra' and one optimisation
-# 2022-05-23 added getLabelAlbums()
+# 2022-05-23 added getLabel()
 # 2022-05-23 added function getSimilarPlaylists()
 # 2023-10-07 Update of app_id handling
 # 2023-10-09 add sort configuration for function getUserPlaylists()
@@ -429,22 +427,21 @@ sub getFavoriteStatus {
 	$self->_get('favorite/status', sub { $args->{status} = (shift->{status} eq JSON::XS::true()); $cb->($args); }, $args);
 }
 
-#Sven 2022-05-13 filter, 2023-10-09 einstellbare Sortierung
+#Sven 2023-10-09 einstellbare Sortierung
 sub getUserPlaylists {
 	my ($self, $cb, $args) = @_;
 	
 	$args = $args || {};
-	
+
 	my $myArgs = {
-#		username => $args->{user} || Plugins::Qobuz::API::Common->username($self->userId),
 		user_id  => $args->{user_id} || $self->userId, #Sven
 		limit    => $args->{limit} || QOBUZ_USERDATA_LIMIT,
 		_ttl     => QOBUZ_USER_DATA_EXPIRY,
 		_user_cache => 1,
-		_use_token => 1,
-		_wipecache => $args->{force},
+		_use_token  => 1,
 	};
-	if ($args->{filter}) { $myArgs->{filter} = $args->{filter} };
+	
+	$myArgs->{_wipecache} = 1 if $args->{force};
 	
 	my $sort = $cb;
 	
@@ -460,7 +457,7 @@ sub getUserPlaylists {
 		};
 	};
 
-	$self->_pagingGet('playlist/getUserPlaylists', $sort, $myArgs, 'playlists');
+	$self->_pagingGet('playlist/getUserPlaylists', $sort , $myArgs, 'playlists');
 
 }
 
@@ -480,15 +477,15 @@ sub doPlaylistCommand {
 
 #Sven 2022-05-23 add
 sub getSimilarPlaylists {
-	my ($self, $cb, $playlistId) = @_;
+	my ($self, $cb, $args) = @_;
 	
-	$self->_pagingGet('playlist/get', $cb, {
-		playlist_id => $playlistId,
-		extra       => 'getSimilarPlaylists',
-		limit    => QOBUZ_USERDATA_LIMIT,
-		_ttl     => QOBUZ_USER_DATA_EXPIRY,
+	$self->_get('playlist/get', $cb, {
+		playlist_id => $args->{playlist_id},
+		extra	    => 'getSimilarPlaylists',
+		limit	    => QOBUZ_USERDATA_LIMIT,
+		_ttl	    => QOBUZ_USER_DATA_EXPIRY,
 		_use_token => 1,
-	}, 'playlists');
+	});
 }
 
 #Sven 2024-02-18 ab hier bis zum Ende ist der Kode identisch mit der Originalversion von Michael Herger

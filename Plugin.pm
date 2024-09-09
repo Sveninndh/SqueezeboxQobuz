@@ -1,5 +1,5 @@
 =head Infos
-Sven 2024-03-01 enhancements based on version 1.400 up to 3.2.0
+Sven 2024-03-02 enhancements based on version 1.400 up to 3.2.5
  1. included a new album information menu befor playing the album
 	It shows: Samplesize, Samplerate, Genre, Duration, Description if present, Goodies (Booklet) if present,
 	trackcount, Credits including performers, Conductor if present, Artist, Composer, ReleaseDate, Label (with label albums),
@@ -1235,25 +1235,15 @@ sub QobuzPlaylistItem {
 		name => cstring($client, 'PLUGIN_QOBUZ_UPDATED_AT') . cstring($client, 'COLON') . ' ' . Slim::Utils::DateTime::shortDateF($playlist->{updated_at}),
 		type  => 'text'
 		} if $playlist->{updated_at};
-	
-	if ($playlist->{stores}) {
-		push @$items, {
-			name => cstring($client, 'PLUGIN_QOBUZ_SIMILAR_PLAYLISTS'),
-			type => 'playlists', #'link',
-			url  => \&QobuzSimilarPlaylists,
-			passthrough => [$playlist->{id}],
-		};
-	}
-	else {
-		push @$items, {
-			name => cstring($client, 'PLUGIN_QOBUZ_MORE_PLAYLISTS_FROM') . ' ' . $playlist->{owner}->{name},
-			type => 'playlists', #'link',
-			url  => \&QobuzUserPlaylists,
-			passthrough => [{ user_id => $playlist->{owner}->{id}, filter => 'owner' }],
-		};
-	}
-	
-	if ($playlist->{owner}->{id} eq getAPIHandler($client)->userId) { #Sven - eq Plugins::Qobuz::API::Common->getUserdata($client, 'id')) {
+
+	push @$items, {
+		name => cstring($client, 'PLUGIN_QOBUZ_SIMILAR_PLAYLISTS'),
+		type => 'playlists', #'link',
+		url  => \&QobuzSimilarPlaylists,
+		passthrough => [{ playlist_id => $playlist->{id} }],
+		} if $playlist->{stores};
+
+	if ($playlist->{owner}->{id} eq getAPIHandler($client)->userId) { #Sven
 		push @$items, {
 			name => cstring($client, 'PLUGIN_QOBUZ_REMOVE_PLAYLIST'),
 			items => [{
