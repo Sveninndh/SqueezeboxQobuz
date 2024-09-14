@@ -27,6 +27,7 @@ use constant CAN_FLAC_SEEK => (Slim::Utils::Versions->compareVersions($::VERSION
 use constant PAGE_URL_REGEXP => qr{^qobuz:(album:|//playlist:|//)([a-z0-9]+)}; #qr{(?:open|play)\.qobuz\.com/(.+)/([a-z0-9]+)};
 Slim::Player::ProtocolHandlers->registerURLHandler(PAGE_URL_REGEXP, __PACKAGE__) if Slim::Player::ProtocolHandlers->can('registerURLHandler');
 
+my $cache = Plugins::Qobuz::API::Common->getCache(); #Ab wird nur in getIcon() verwendet
 my $log   = logger('plugin.qobuz');
 my $prefs = preferences('plugin.qobuz');
 
@@ -168,6 +169,8 @@ sub trackGain {
 	my $peak = 0;
 	my $netGain = 0;
 	my $album;
+	my $randomPlay = exists $INC{'Slim/Plugin/RandomPlay/Plugin.pm'};
+	my $mode = '';
 
 	my ($id) = $class->crackUrl($url);
 	main::DEBUGLOG && $log->is_debug && $log->debug("Id: $id");
@@ -175,13 +178,30 @@ sub trackGain {
 	my $meta = $cache->get('trackInfo_' . $id);
 	main::DEBUGLOG && $log->is_debug && $log->debug(Data::Dump::dump($meta));
 
+	if ($randomPlay) {
+		$mode = Slim::Plugin::RandomPlay::Plugin::active($client);
+		main::INFOLOG && $log->info("Random play type: /" . $mode . "/");
+	}
+
 	if (!$meta) {
 		main::INFOLOG && $log->info("Get track info failed for url $url - id($id)");
-	} elsif ($rgmode == 1   # track gain in use
-			|| (!($album = $cache->get('album_with_tracks_' . $meta->{albumId})) # OR not in the cached favorites
-				&& (!($album = $cache->get('albumInfo_' . $meta->{albumId})) 	 # ...AND (not in cached albums
-					|| ref $meta->{genre} ne "") )  # ...OR the track info was not populated from an album)
-			|| !defined $album->{replay_gain}) {    # OR album gain not specified (should not occur)
+	} elsif (
+		$rgmode == 1   # track gain in use
+		|| (   # or Random Play is in effect (but not in 'album' or 'work' mode)
+			$randomPlay && $mode     # plugin is installed and active...
+				&& $mode ne 'album'  #...but not in 'album' (release) mode
+				&& $mode ne 'work'   #...or 'work' mode
+			)
+		|| (   # OR not in the cached favorites...
+			!($album = $cache->get('album_with_tracks_' . $meta->{albumId}))
+			&& (   # ...AND (not in cached albums
+				!($album = $cache->get('albumInfo_' . $meta->{albumId}))
+					|| ref $meta->{genre} ne ""
+				)
+			)
+		# ...OR the track info was not populated from an album OR album gain not specified)
+		|| !ref $album || !defined $album->{replay_gain}
+	) {
 		$gain = ($rgmode == 2) ? 0 : $meta->{replay_gain};  # zero replay gain for non-album tracks if using album gain
 		$peak = ($rgmode == 2) ? 0 : $meta->{replay_peak};  # ... otherwise, use the track gain
 		main::INFOLOG && $log->info("Using gain value of $gain : $peak for track: " .  $meta->{title} );
@@ -448,18 +468,30 @@ sub audioScrobblerSource {
 sub getIcon {
 	my ( $class, $url ) = @_;
 
-	my ($id) = $class->crackUrl($url);
-	
-	$id ||= $url;
-	unless ($id =~ /^qobuz:album/) {
-		my $meta = Plugins::Qobuz::API->getTrackInfo(sub {}, $id);
-		
-		if ($meta->{cover} && ref $meta->{cover}) {
-			$meta->{cover} = Plugins::Qobuz::API::Common->getImageFromImagesHash($meta->{cover});
-		}
-		return $meta->{cover};
+#	my ($id) = $class->crackUrl($url);
+#	Ab hier neue Version von Michael
+	my ($type, $id) = $url =~ /^qobuz:(\w+):(\w+)$/;
+
+	if ($type && $type eq 'album') {
+		my $meta = $cache->get('albumInfo_' . $id) || {};
+		return $meta->{image} if $meta->{image};
 	}
-	return '';
+
+	($id) = $class->crackUrl($url) unless $type && $id;
+	my $meta = $cache->get('trackInfo_' . $id) || {};
+
+	return Plugins::Qobuz::API::Common->getImageFromImagesHash($meta->{cover});
+#	Ab hier meine alte Version, vor Löschung erst testen ob die neue Verion gleich gut oder besser ist. 
+#	$id ||= $url;
+#	unless ($id =~ /^qobuz:album/) {
+#		my $meta = Plugins::Qobuz::API->getTrackInfo(sub {}, $id);
+#		
+#		if ($meta->{cover} && ref $meta->{cover}) {
+#			$meta->{cover} = Plugins::Qobuz::API::Common->getImageFromImagesHash($meta->{cover});
+#		}
+#		return $meta->{cover};
+#	}
+#	return '';
 }
 
 1;

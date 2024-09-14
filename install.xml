@@ -5,7 +5,9 @@
 	<module>Plugins::Qobuz::Plugin</module>
 	<importmodule>Plugins::Qobuz::Importer</importmodule>
 	<onlineLibrary>true</onlineLibrary>
-	<version>30.2.0</version>
+	<category>musicservices</category>
+
+	<version>30.5.4</version>
 	<description>PLUGIN_QOBUZ_DESC</description>
 	<creator>Pierre Beck / Michael Herger / darrell / SamY / SvenInNdh</creator>
 	<email>sveninndh@gmail.com</email>
@@ -19,7 +21,7 @@
 
 	<targetApplication>
 		<id>SqueezeCenter</id>
-		<minVersion>7.9</minVersion>
+		<minVersion>8.0</minVersion>
 		<maxVersion>*</maxVersion>
 	</targetApplication>
 

@@ -1,6 +1,6 @@
 package Plugins::Qobuz::API;
 
-#Sven 2024-03-02 enhancements version 30.2.5
+#Sven 2024-08-10 enhancements version 30.5.4
 # All changes are marked with "#Sven" in source code
 # 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
 # 2022-05-13 added function setFavorite()
@@ -295,6 +295,8 @@ sub getAlbum {
 	
 	if (! ref $args) { $args = { album_id => $args }; };
 
+	#$self->_pagingGet('album/get', sub { #Wozu Paging bei den Track eines einzigen Albums?????
+	#Funktioniert mit meiner Version von Plugin:QobuzGetTracks() nicht
 	$self->_get('album/get', sub {
 		my $album = shift;
 		
@@ -308,7 +310,7 @@ sub getAlbum {
 		}
 
 		$cb->($album);
-	}, $args);
+	}, $args); #, 'tracks');
 }
 
 sub getFeaturedAlbums {

@@ -1,5 +1,5 @@
 =head Infos
-Sven 2024-03-02 enhancements based on version 1.400 up to 3.2.5
+Sven 2024-08-10 enhancements based on version 1.400 up to 3.5.4
  1. included a new album information menu befor playing the album
 	It shows: Samplesize, Samplerate, Genre, Duration, Description if present, Goodies (Booklet) if present,
 	trackcount, Credits including performers, Conductor if present, Artist, Composer, ReleaseDate, Label (with label albums),
@@ -53,6 +53,10 @@ use constant CAN_IMPORTER => (Slim::Utils::Versions->compareVersions($::VERSION,
 use constant CLICOMMAND => 'qobuzquery';
 use constant MAX_RECENT => 30;
 
+use constant ALBUM => '1';
+use constant EP => '2';
+use constant SINGLE => '3';
+
 # Keep in sync with Music & Artist Information plugin
 my $WEBLINK_SUPPORTED_UA_RE = qr/\b(?:iPeng|SqueezePad|OrangeSqueeze|OpenSqueeze|Squeezer|Squeeze-Control)\b/i;
 my $WEBBROWSER_UA_RE = qr/\b(?:FireFox|Chrome|Safari)\b/i;
@@ -79,6 +83,8 @@ $prefs->init({
 	useClassicalEnhancements => 1,
 	parentalWarning => 0,
 	showDiscs => 0,
+	groupReleases => 1,
+	importWorks => 1,
 });
 
 $prefs->migrate(1,
@@ -99,6 +105,12 @@ $prefs->migrate(1,
 		1;
 	}
 );
+
+# reset the API ref when a player changes user
+$prefs->setChange( sub {
+	my ($pref, $userId, $client) = @_;
+	$client->pluginData(api => 0);
+}, 'userId');
 
 my $log = Slim::Utils::Log->addLogCategory( {
 	category     => 'plugin.qobuz',
@@ -696,6 +708,8 @@ sub QobuzArtist {
 			return;
 		}
 
+		my $groupByReleaseType = $prefs->get('groupReleases');
+
 		my $items = [];
 		
 		if ($artist->{biography}) {
@@ -716,9 +730,9 @@ sub QobuzArtist {
 				type  => 'text'
 			}
 		}	
-		
+
 		push @$items, {
-			name  => cstring($client, 'ALBUMS'),
+			name  => $groupByReleaseType ? cstring($client, 'PLUGIN_QOBUZ_RELEASES') : cstring($client, 'ALBUMS'),
 			# placeholder URL - please see below for albums returned in the artist query
 			url   => \&QobuzSearch,
 			image => 'html/images/albums.png',
@@ -729,39 +743,7 @@ sub QobuzArtist {
 				artistId => $artist->{id},
 			}]
 		};
-		
-		# use album list if it was returned in the artist lookup
-		if ($artist->{albums}) {
-			my $albums = [];
 
-			# sort by release date if requested
-			my $sortByDate = $prefs->get('sortArtistAlbums');
-
-			$artist->{albums}->{items} = [ sort {
-				if ($sortByDate) {
-					return $sortByDate == 1 ? $b->{released_at}*1 <=> $a->{released_at}*1 : $a->{released_at}*1 <=> $b->{released_at}*1;
-				}
-				else {
-					# push singles and EPs down the list
-					if ( ($a->{tracks_count} >= 4 && $b->{tracks_count} < 4) || ($a->{tracks_count} < 4 && $b->{tracks_count} >=4) ) {
-						return $b->{tracks_count} <=> $a->{tracks_count};
-					}
-				}
-				
-				return lc($a->{title}) cmp lc($b->{title});
-
-			} @{$artist->{albums}->{items} || []} ];
-
-			for my $album ( @{$artist->{albums}->{items}} ) {
-				next if $args->{artistId} && $album->{artist}->{id} != $args->{artistId};
-				push @$albums, _albumItem($client, $album);
-			}
-			if (@$albums) {
-				$items->[1]->{items} = $albums;
-				delete $items->[1]->{url};
-			}
-		}
-		
 		push @$items, {
 			name  => cstring($client, 'SONGS'),
 			url   => \&QobuzSearch,
@@ -773,6 +755,105 @@ sub QobuzArtist {
 				artistId => $artist->{id},
 			}]
 		};
+
+		# use album list if it was returned in the artist lookup
+		if ($artist->{albums}) {
+			my $releases = [];
+			my $albums = [];
+			my $numAlbums = 0;
+			my $eps = [];
+			my $numEps = 0;
+			my $singles = [];
+			my $numSingles = 0;
+
+			# group by release type if requested
+			if ($groupByReleaseType) {
+				for my $album ( @{$artist->{albums}->{items}} ) {
+					next if $args->{artistId} && $album->{artist}->{id} != $args->{artistId};
+					if ($album->{duration} >= 1800 || $album->{tracks_count} > 6) {
+						$album->{release_type} = ALBUM;
+						$numAlbums++;
+					} elsif ($album->{tracks_count} < 4) {
+						$album->{release_type} = SINGLE;
+						$numSingles++;
+					} else {
+						$album->{release_type} = EP;
+						$numEps++;
+					}
+				}
+			}
+
+			# sort by release date if requested
+			my $sortByDate = $prefs->get('sortArtistAlbums');
+
+			$artist->{albums}->{items} = [ sort {
+				if ($sortByDate) {
+					return $sortByDate == 1 ? ( $a->{release_type} cmp $b->{release_type} || $b->{released_at}*1 <=> $a->{released_at}*1 )
+											: ( $a->{release_type} cmp $b->{release_type} || $a->{released_at}*1 <=> $b->{released_at}*1 );
+				}
+				else {
+					return $a->{release_type} cmp $b->{release_type} || lc($a->{title}) cmp lc($b->{title});
+				}
+
+			} @{$artist->{albums}->{items} || []} ];
+
+			my $lastReleaseType = "";
+
+			for my $album ( @{$artist->{albums}->{items}} ) {
+				next if $args->{artistId} && $album->{artist}->{id} != $args->{artistId};
+				#push @$albums, _albumItem($client, $album);
+				if ($groupByReleaseType) {
+					if ($album->{release_type} eq ALBUM) {
+						push @$albums, _albumItem($client, $album);
+					} elsif ($album->{release_type} eq EP) {
+						push @$eps, _albumItem($client, $album);
+					} elsif ($album->{release_type} eq SINGLE) {
+						push @$singles, _albumItem($client, $album);
+					}
+
+					if ($album->{release_type} ne $lastReleaseType) {
+						$lastReleaseType = $album->{release_type};
+						my $relType = "";
+						my $relNum = 0;
+						my $relItems;
+						my $relIcon = "";
+
+						if ($lastReleaseType eq ALBUM) {
+							$relType = cstring($client, 'ALBUMS');
+							$relNum = $numAlbums;
+							$relItems = $albums;
+							$relIcon = 'plugins/Qobuz/html/images/Qobuz_MTL_svg_release-album.png';
+						} elsif ($lastReleaseType eq EP) {
+							$relType = cstring($client, 'RELEASE_TYPE_EPS');
+							$relNum = $numEps;
+							$relItems = $eps;
+							$relIcon = 'plugins/Qobuz/html/images/Qobuz_MTL_svg_release-ep.png';
+						} elsif ($lastReleaseType eq SINGLE) {
+							$relType = cstring($client, 'RELEASE_TYPE_SINGLES');
+							$relNum = $numSingles;
+							$relItems = $singles;
+							$relIcon = 'plugins/Qobuz/html/images/Qobuz_MTL_svg_release-single.png';
+						} else {
+							$relType = "Unknown";  #should never occur
+						}
+
+						push @$releases, {
+							name => "$relType ($relNum)",
+							image => $relIcon,	
+							type => 'header',
+							playall => 1,
+							items => $relItems
+						};
+					}
+				}
+				push @$releases, _albumItem($client, $album);
+			}
+
+			if (@$releases) {
+				$items->[1]->{items} = $releases;
+				delete $items->[1]->{url};
+			}
+		}
 
 		#Sven 2020-03-13
 		push @$items, {	name  => cstring($client, 'PLAYLISTS'),
@@ -1522,7 +1603,7 @@ sub QobuzGetTracks {
 				# insert disc item before the first of its tracks
 				splice @$tracks, $discs->{$disc}->{index}, 0, {
 					name => $discs->{$disc}->{title},
-					image => $discs->{$disc}->{image},
+					image => 'html/images/albums.png', #image => $discs->{$disc}->{image},
 					type => 'playlist',
 					playall => 1,
 					url => \&QobuzWorkGetTracks,
@@ -2219,9 +2300,9 @@ sub albumInfoMenu {
 			elsif ( $qobuzAlbum->{release_date_stream} && $qobuzAlbum->{release_date_stream} lt Slim::Utils::DateTime::shortDateF(time, "%Y-%m-%d") ) {
 				$cache->set('album_with_tracks_' . $albumId, $qobuzAlbum, QOBUZ_DEFAULT_EXPIRY);
 			}
-		}, $albumId) unless $qobuzAlbum;
+		}, $albumId) unless $qobuzAlbum && ref $qobuzAlbum;
 
-		if ( $qobuzAlbum ) {
+		if ( $qobuzAlbum && ref $qobuzAlbum ) {
 			my %seen;
 			my $performers = {};
 			my $albumcredits;
@@ -2715,8 +2796,9 @@ sub getAPIHandler {
 		$api = $clientOrId->pluginData('api');
 
 		if ( !$api ) {
+			my $userdata = Plugins::Qobuz::API::Common->getAccountData($clientOrId);
 			# if there's no account assigned to the player, just pick one
-			if ( !$prefs->client($clientOrId)->get('userId') ) {
+			if (!$userdata) {
 				my $userId = Plugins::Qobuz::API::Common->getSomeUserId();
 				$prefs->client($clientOrId)->set('userId', $userId) if $userId;
 			}

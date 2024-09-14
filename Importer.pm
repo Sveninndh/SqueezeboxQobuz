@@ -102,7 +102,7 @@ sub scanAlbums {
 		foreach my $album (@$albums) {
 			my $albumDetails = $cache->get('album_with_tracks_' . $album->{id});
 
-			if ($albumDetails && $albumDetails->{tracks} && ref $albumDetails->{tracks} && $albumDetails->{tracks}->{items}) {
+			if ($albumDetails && ref $albumDetails && $albumDetails->{tracks} && ref $albumDetails->{tracks} && $albumDetails->{tracks}->{items}) {
 				$progress->update($album->{title});
 				$class->storeTracks([
 					map { _prepareTrack($albumDetails, $_) } @{ $albumDetails->{tracks}->{items} }
@@ -351,8 +351,11 @@ sub _prepareTrack {
 		$attributes->{DISCC} = $album->{media_count};
 	}
 
-	if ($track->{composer}) {
+	if ($track->{composer} && $track->{composer}->{name}) {
 		$attributes->{COMPOSER} = $track->{composer}->{name};
+		if ( $track->{work} && $prefs->get('importWorks') ) {
+			$attributes->{WORK} = $track->{work};
+		}
 	}
 
 	if ($track->{performer} && $track->{performer}->{name} ne $album->{artist}->{name}) {
