@@ -1,5 +1,5 @@
 =head Infos
-Sven 2024-08-10 enhancements based on version 1.400 up to 3.5.4
+Sven 2025-03-14 enhancements based on version 1.400 up to 3.5.7
  1. included a new album information menu befor playing the album
 	It shows: Samplesize, Samplerate, Genre, Duration, Description if present, Goodies (Booklet) if present,
 	trackcount, Credits including performers, Conductor if present, Artist, Composer, ReleaseDate, Label (with label albums),
@@ -530,7 +530,7 @@ sub QobuzAlbums {
 	my $genreId = $args->{genreId} || '';
 	my @types = (
 		['new-releases',		'PLUGIN_QOBUZ_NEW_RELEASES'],
-		['recent-releases',		'PLUGIN_QOBUZ_RECENT_RELEASES'],
+		#['recent-releases',		'PLUGIN_QOBUZ_RECENT_RELEASES'],
 		['press-awards',		'PLUGIN_QOBUZ_PRESS'],
 		['most-streamed',		'PLUGIN_QOBUZ_MOST_STREAMED'],
 		['editor-picks',		'PLUGIN_QOBUZ_EDITOR_PICKS'],
@@ -561,7 +561,7 @@ sub QobuzAlbums {
 	$cb->({ items => $items });
 }
 
-#Sven
+#Sven 2024-12-15
 sub QobuzSearch {
 	my ($client, $cb, $params, $args) = @_;
 
@@ -578,12 +578,13 @@ sub QobuzSearch {
 			return;
 		}
 
-		my $albums = [];
-		for my $album ( @{$searchResult->{albums}->{items} || []} ) {
-			# XXX - unfortunately the album results don't return the artist's ID
-			next if $args->{artistId} && !($album->{artist} && lc($album->{artist}->{name}) eq $search);
-			push @$albums, _albumItem($client, $album);
-		}
+		my $albums = getReleases( $client, $searchResult->{albums}, $args->{artistId} );
+		#my $albums = [];
+		#for my $album ( @{$searchResult->{albums}->{items} || []} ) {
+		#	# XXX - unfortunately the album results don't return the artist's ID
+		#	next if $args->{artistId} && !($album->{artist} && lc($album->{artist}->{name}) eq $search);
+		#	push @$albums, _albumItem($client, $album);
+		#}
 
 		my $artists = [];
 		for my $artist ( @{$searchResult->{artists}->{items} || []} ) {
@@ -605,7 +606,8 @@ sub QobuzSearch {
 		my $items = [];
 
 		push @$items, {
-			name  => cstring($client, 'ALBUMS'),
+			#name  => $prefs->get('groupReleases') ? cstring($client, 'PLUGIN_QOBUZ_RELEASES') : cstring($client, 'ALBUMS'),
+			name  => cstring($client, 'PLUGIN_QOBUZ_RELEASES'),
 			items => $albums,
 			image => 'html/images/albums.png',
 			type  => 'albums', #Sven - view type
@@ -640,6 +642,107 @@ sub QobuzSearch {
 			items => $items
 		});
 	}, $search, $type);
+}
+
+#Sven 2024-12-14 (war bis 3.5.4 Teil von sub QobuzArtist)
+sub getReleases {
+	my ($client, $results, $artistID) = @_;
+	
+	my $releases = [];
+	
+	if ($results) {
+		my $albums = [];
+		my $numAlbums = 0;
+		my $eps = [];
+		my $numEps = 0;
+		my $singles = [];
+		my $numSingles = 0;
+		
+		my $groupByReleaseType = $prefs->get('groupReleases');
+		# group by release type if requested
+		if ($groupByReleaseType) {
+			for my $album ( @{$results->{items}} ) {
+				next if $artistID && $album->{artist}->{id} != $artistID;
+				if ($album->{duration} >= 1800 || $album->{tracks_count} > 6) {
+					$album->{release_type} = ALBUM;
+					$numAlbums++;
+				} elsif ($album->{tracks_count} < 4) {
+					$album->{release_type} = SINGLE;
+					$numSingles++;
+				} else {
+					$album->{release_type} = EP;
+					$numEps++;
+				}
+			}
+		}
+
+		# sort by release date if requested
+		my $sortByDate = $prefs->get('sortArtistAlbums');
+
+		$results->{items} = [ sort {
+			if ($sortByDate) {
+				return $sortByDate == 1 ? ( $a->{release_type} cmp $b->{release_type} || $b->{released_at}*1 <=> $a->{released_at}*1 )
+										: ( $a->{release_type} cmp $b->{release_type} || $a->{released_at}*1 <=> $b->{released_at}*1 );
+			}
+			else {
+				return $a->{release_type} cmp $b->{release_type} || lc($a->{title}) cmp lc($b->{title});
+			}
+
+		} @{$results->{items} || []} ];
+
+		my $lastReleaseType = "";
+
+		for my $album ( @{$results->{items}} ) {
+			next if $artistID && $album->{artist}->{id} != $artistID;
+			#push @$albums, _albumItem($client, $album);
+			if ($groupByReleaseType) {
+				if ($album->{release_type} eq ALBUM) {
+					push @$albums, _albumItem($client, $album);
+				} elsif ($album->{release_type} eq EP) {
+					push @$eps, _albumItem($client, $album);
+				} elsif ($album->{release_type} eq SINGLE) {
+					push @$singles, _albumItem($client, $album);
+				}
+
+				if ($album->{release_type} ne $lastReleaseType) {
+					$lastReleaseType = $album->{release_type};
+					my $relType = "";
+					my $relNum = 0;
+					my $relItems;
+					my $relIcon = "";
+
+					if ($lastReleaseType eq ALBUM) {
+						$relType = cstring($client, 'ALBUMS');
+						$relNum = $numAlbums;
+						$relItems = $albums;
+						$relIcon = 'plugins/Qobuz/html/images/Qobuz_MTL_svg_release-album.png';
+					} elsif ($lastReleaseType eq EP) {
+						$relType = cstring($client, 'RELEASE_TYPE_EPS');
+						$relNum = $numEps;
+						$relItems = $eps;
+						$relIcon = 'plugins/Qobuz/html/images/Qobuz_MTL_svg_release-ep.png';
+					} elsif ($lastReleaseType eq SINGLE) {
+						$relType = cstring($client, 'RELEASE_TYPE_SINGLES');
+						$relNum = $numSingles;
+						$relItems = $singles;
+						$relIcon = 'plugins/Qobuz/html/images/Qobuz_MTL_svg_release-single.png';
+					} else {
+						$relType = "Unknown";  #should never occur
+					}
+
+					push @$releases, {
+						name => "$relType ($relNum)",
+						image => $relIcon,	
+						type => 'header',
+						playall => 1,
+						items => $relItems
+					};
+				}
+			}
+			push @$releases, _albumItem($client, $album);
+		}
+	}
+	return $releases;
 }
 
 sub browseArtistMenu {
@@ -708,8 +811,6 @@ sub QobuzArtist {
 			return;
 		}
 
-		my $groupByReleaseType = $prefs->get('groupReleases');
-
 		my $items = [];
 		
 		if ($artist->{biography}) {
@@ -732,7 +833,8 @@ sub QobuzArtist {
 		}	
 
 		push @$items, {
-			name  => $groupByReleaseType ? cstring($client, 'PLUGIN_QOBUZ_RELEASES') : cstring($client, 'ALBUMS'),
+			#name  => $prefs->get('groupReleases') ? cstring($client, 'PLUGIN_QOBUZ_RELEASES') : cstring($client, 'ALBUMS'),
+			name  => cstring($client, 'PLUGIN_QOBUZ_RELEASES'),
 			# placeholder URL - please see below for albums returned in the artist query
 			url   => \&QobuzSearch,
 			image => 'html/images/albums.png',
@@ -756,103 +858,11 @@ sub QobuzArtist {
 			}]
 		};
 
-		# use album list if it was returned in the artist lookup
-		if ($artist->{albums}) {
-			my $releases = [];
-			my $albums = [];
-			my $numAlbums = 0;
-			my $eps = [];
-			my $numEps = 0;
-			my $singles = [];
-			my $numSingles = 0;
-
-			# group by release type if requested
-			if ($groupByReleaseType) {
-				for my $album ( @{$artist->{albums}->{items}} ) {
-					next if $args->{artistId} && $album->{artist}->{id} != $args->{artistId};
-					if ($album->{duration} >= 1800 || $album->{tracks_count} > 6) {
-						$album->{release_type} = ALBUM;
-						$numAlbums++;
-					} elsif ($album->{tracks_count} < 4) {
-						$album->{release_type} = SINGLE;
-						$numSingles++;
-					} else {
-						$album->{release_type} = EP;
-						$numEps++;
-					}
-				}
-			}
-
-			# sort by release date if requested
-			my $sortByDate = $prefs->get('sortArtistAlbums');
-
-			$artist->{albums}->{items} = [ sort {
-				if ($sortByDate) {
-					return $sortByDate == 1 ? ( $a->{release_type} cmp $b->{release_type} || $b->{released_at}*1 <=> $a->{released_at}*1 )
-											: ( $a->{release_type} cmp $b->{release_type} || $a->{released_at}*1 <=> $b->{released_at}*1 );
-				}
-				else {
-					return $a->{release_type} cmp $b->{release_type} || lc($a->{title}) cmp lc($b->{title});
-				}
-
-			} @{$artist->{albums}->{items} || []} ];
-
-			my $lastReleaseType = "";
-
-			for my $album ( @{$artist->{albums}->{items}} ) {
-				next if $args->{artistId} && $album->{artist}->{id} != $args->{artistId};
-				#push @$albums, _albumItem($client, $album);
-				if ($groupByReleaseType) {
-					if ($album->{release_type} eq ALBUM) {
-						push @$albums, _albumItem($client, $album);
-					} elsif ($album->{release_type} eq EP) {
-						push @$eps, _albumItem($client, $album);
-					} elsif ($album->{release_type} eq SINGLE) {
-						push @$singles, _albumItem($client, $album);
-					}
-
-					if ($album->{release_type} ne $lastReleaseType) {
-						$lastReleaseType = $album->{release_type};
-						my $relType = "";
-						my $relNum = 0;
-						my $relItems;
-						my $relIcon = "";
-
-						if ($lastReleaseType eq ALBUM) {
-							$relType = cstring($client, 'ALBUMS');
-							$relNum = $numAlbums;
-							$relItems = $albums;
-							$relIcon = 'plugins/Qobuz/html/images/Qobuz_MTL_svg_release-album.png';
-						} elsif ($lastReleaseType eq EP) {
-							$relType = cstring($client, 'RELEASE_TYPE_EPS');
-							$relNum = $numEps;
-							$relItems = $eps;
-							$relIcon = 'plugins/Qobuz/html/images/Qobuz_MTL_svg_release-ep.png';
-						} elsif ($lastReleaseType eq SINGLE) {
-							$relType = cstring($client, 'RELEASE_TYPE_SINGLES');
-							$relNum = $numSingles;
-							$relItems = $singles;
-							$relIcon = 'plugins/Qobuz/html/images/Qobuz_MTL_svg_release-single.png';
-						} else {
-							$relType = "Unknown";  #should never occur
-						}
-
-						push @$releases, {
-							name => "$relType ($relNum)",
-							image => $relIcon,	
-							type => 'header',
-							playall => 1,
-							items => $relItems
-						};
-					}
-				}
-				push @$releases, _albumItem($client, $album);
-			}
-
-			if (@$releases) {
-				$items->[1]->{items} = $releases;
-				delete $items->[1]->{url};
-			}
+		my $releases = getReleases($client, $artist->{albums}, $args->{artistId});
+		
+		if (@$releases) {
+			$items->[1]->{items} = $releases;
+			delete $items->[1]->{url};
 		}
 
 		#Sven 2020-03-13
@@ -918,7 +928,7 @@ sub QobuzArtist {
 		$cb->( {
 			items => $items
 		} );
-	}, $args->{artistId});
+	}, $args->{artistId}, 1);
 }
 
 #Sven
@@ -2200,6 +2210,7 @@ sub _trackItem {
 		$item->{items} = $items;
 	}
 
+	$item->{url}          = $item->{play} if $item->{play};
 	$item->{tracknum}     = $track->{track_number};
 	$item->{media_number} = $track->{media_number};
 	$item->{media_count}  = $album->{media_count};
@@ -2570,7 +2581,8 @@ sub searchMenu {
 	return {
 		name => cstring($client, getDisplayName()),
 		items => [{
-			name  => cstring($client, 'ALBUMS'),
+			#name  => $prefs->get('groupReleases') ? cstring($client, 'PLUGIN_QOBUZ_RELEASES') : cstring($client, 'ALBUMS'),
+			name  => cstring($client, 'PLUGIN_QOBUZ_RELEASES'),
 			url   => \&QobuzSearch,
 			type  => 'albums', #Sven - view type
 			image => 'html/images/albums.png',

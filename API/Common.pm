@@ -306,6 +306,26 @@ sub addVersionToTitle {
 	return $track->{title};
 }
 
+sub getMainArtists {
+	my ($class, $album) = @_;
+
+	my @artistList = ();
+	my $artistName;
+
+	if (ref $album->{artist}) {
+		push @artistList, $album->{artist};  # always include the primary artist
+		$artistName = lc($album->{artist}->{name});
+	}
+	if (ref $album->{artists} && scalar @{$album->{artists}}) {
+		for my $artist ( @{$album->{artists}} ) {  # get additional main artists, if any
+			if (grep(/main-artist/, @{$artist->{roles}}) && (lc($artist->{name}) ne $artistName)) {
+				push @artistList, $artist;
+			}
+		}
+	}
+	return @artistList;
+}
+
 sub getStreamingFormat {
 	my ($class, $track) = @_;
 
