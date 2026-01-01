@@ -1,6 +1,6 @@
 package Plugins::Qobuz::API;
 
-#Sven 2024-11-05 enhancements version 30.6.6
+#Sven 2024-12-28 enhancements version 30.6.6.5
 # All changes are marked with "#Sven" in source code
 # 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
 # 2022-05-13 added function setFavorite()
@@ -21,6 +21,7 @@ package Plugins::Qobuz::API;
 # 2025-10-30 added function getArtistPage()
 # 2025-11-01 optimisation of _lookupArtistPicture()
 # 2025-11-04 added functions getArtistPicture(), getArtistImageFromHash()
+# 2025-12-28 getRadio() - fix to support ReplayGain
 
 # $log->error(Data::Dump::dump($albums));
 use strict;
@@ -67,23 +68,15 @@ sub new {
 	
 	my $client = $args->{client};
 
-	#$log->error(Data::Dump::dump($client->controllerUA()));
-	#$log->error(Data::Dump::dump($args->{client}));
-
 	my $userId = $args->{userId} || $prefs->client($client)->get('userId') || return;
 
-	#$log->error(Data::Dump::dump($userId));
-
 	if (my $apiClient = $apiClients{$userId}) {
-		#$log->error(Data::Dump::dump($apiClient));
 		return $apiClient;
 	}
 
 	my $self = $apiClients{$userId} = $class->SUPER::new();
 	$self->client($client);
 	$self->userId($userId);
-
-	#$log->error(Data::Dump::dump($self));
 
 	# update our profile ASAP
 	$self->updateUserdata();
@@ -212,7 +205,7 @@ sub search {
 	else { $self->_get('catalog/search', $getCB, $args); }
 }
 
-#Sven 2025-10-16 
+#Sven 2025-10-16, 2025-12-28
 sub getRadio {
 	my ($self, $cb, $args) = @_;
 	
@@ -223,13 +216,25 @@ sub getRadio {
 	$args->{_use_token} = 1;
 	$args->{_cid}       = 1;
 	
-	#$log->error(Data::Dump::dump({ type => $type, args => $args }));
-	
 	$self->_get('radio/' . $type, sub {
 		my $radio = shift;
+
+		#$radio->{tracks}->{items} = _precacheTracks($radio->{tracks}->{items}) if (exists $radio->{tracks}->{items});
+		#$cb->($radio);
+
+		#Sven 2025-12-28 Die $radio->{tracks}->{items} enthalten keine ReplayGain-Informationen
+		#Daher werden diese Informationen mit _post('track/getList') noch separat geholt.
+		my $trackIds = { data => to_json({ tracks_id => [ map { $_->{id} } @{$radio->{tracks}->{items}} ] }) };
+
+		$self->_post('track/getList', sub {
+			my $result = shift;
+
+			$radio->{tracks}->{items} = _precacheTracks($result->{tracks}->{items});
+			
+			$cb->($radio);
+		}, $trackIds);
+
 		
-		$radio->{tracks}->{items} = _precacheTracks($radio->{tracks}->{items}) if (exists $radio->{tracks}->{items});
-		$cb->($radio);
 	}, $args);
 }
 
@@ -290,12 +295,13 @@ sub getArtistPage {
 
 		$cb->($results) if $cb;
 	}, { 
+		limit     => 50,
 		artist_id => $artistId,
 		_cid	  => 1,
 	});
 }
 
-#Sven 2025-11-05 - the get command used for a lot of Server commands
+#Sven 2025-12-28 - the get command used for a lot of new server commands
 # $args - contains a hash with the parameters for control
 # cmd   - the command that is sent to the Qobuz server contains
 # args  - Contains, if necessary, the parameters that must be sent with the command.
@@ -328,15 +334,19 @@ sub getData {
 		my $result = shift;
 
 		if ($result->{artists}) {
-			foreach (@{$result->{items}}) {		
+			foreach (@{$result->{artists}->{items}}) {		
 				$_->{image} = $self->getArtistImageFromHash($_->{id}, $_->{image});
 			};
 		}
+
+		if ($result->{albums}) {
+			$result->{albums}->{items} = _precacheAlbum($result->{albums}->{items});
+		}
+
+		if ($result->{top_tracks}) {
+			$result->{top_tracks} = _precacheTracks($result->{top_tracks});
+		}
 		
-		$result->{albums}->{items} = _precacheAlbum($result->{albums}->{items}) if $result->{albums};
-
-		$result->{top_tracks} = _precacheTracks($result->{top_tracks}) if $result->{top_tracks};
-
 		if ($result->{releases}) {
 			foreach (@{$result->{releases}}) {		
 				$_->{data}->{items} = _precacheAlbum($_->{data}->{items});
@@ -348,7 +358,7 @@ sub getData {
 				$_->{image} = $self->getArtistImageFromHash($_->{id}, $_->{image});
 			};
 		}
-
+		
 		$cb->($result) if $cb;
 	}, $args, $type);
 }
@@ -1028,21 +1038,22 @@ sub _pagingGet {
 # Für den Lyrion Server muss am Ende ohnehin eine komplette Liste bestehend aus allen angeforderten Seiten übergeben werden.
 # Ein echtes Paging wo das Holen der nächsten Seite von der Benutzeraktionen (scrollen oder sich seitenweise weiter bewegen) abhängt
 # scheint Lyrion oder das Qobuz-Plugin nicht zu unterstützen.
-# Es gibt zwei Parameter:
+# Es gibt in $params zwei Parameter zur Steuerung:
 # 'offset' gibt die Position an ab der gelesen wird.
 # 'limit' gibt die maximale Anzahl an Datensätzen an die eingelsen werden sollen. Der maximal Wert ist 50. Alle höheren Werte werden alle durch 50 ersetzt.
 # 'limit' kann auch weggelassen werden, dann wird auch automatische ein Wert von 50 angenommen.
 # falls das das GET Kommando eine Liste ohne den Wert has_more liefert wird nur ein _get() ausgeführt.
+# $type kann 'albums', 'artists', 'tracks' und 'playlists' sein.
 sub _pagingGetMore {
 	my ( $self, $url, $cb, $params, $type ) = @_;
 	
 	my $limitTotal = $params->{limit} || QOBUZ_USERDATA_LIMIT;
 	$params->{limit}  = ($params->{limit} && $params->{limit} < 50) ? $params->{limit} : 50; 
-	$params->{offset} =  0;
+	$params->{offset} = 0 unless exists $params->{offset};
 	
 	my $cid = $params->{_cid};
 	my $collector = [];
-	my $offset = 0;
+	my $offset = $params->{offset};
 	my $getCBFn;
 	
 	$getCBFn = sub {
@@ -1051,7 +1062,7 @@ sub _pagingGetMore {
 		
 		$self->_get($url, sub {
 			my $result = shift;
-					
+
 			if ($result) {
 				$result = $result->{$type} if ($type &&  ! exists $result->{has_more});
 			

@@ -1,4 +1,4 @@
-# String file for Qobuz plugin 30.6.4 - Enhancements from SvenInNdh
+# String file for Qobuz plugin 30.6.6.5 - Enhancements from SvenInNdh
 
 PLUGIN_QOBUZ
 	EN	Qobuz
@@ -440,6 +440,13 @@ PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_BY_DATE_OLD
 	FR	par date de sortie (la plus ancienne en premier)
 	NL	op releasedatum (oudste eerst)
 	ES	por fecha de lanzamiento (de la más antigua a la más reciente)
+
+PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_UNSORTED
+	DE	unsortiert
+	EN	unsorted
+	FR	non trié
+	NL	ongesorteerd
+	ES	sin clasificar
 
 PLUGIN_QOBUZ_HIRES
 	DE	^
@@ -1078,5 +1085,9 @@ PLUGIN_QOBUZ_ALBUMLIST_EMPTY
 	NL	De albumlijst is leeg! De lijst 'Release Radar' is bijvoorbeeld leeg als er geen artiesten in de favorieten staan.
 	ES	¡La lista de álbumes está vacía! Por ejemplo, la lista 'Release Radar' está vacía si no hay artistas en tus favoritos.
 
-PLUGIN_QOBUZ_ID
-	EN	ID
+PLUGIN_QOBUZ_USER_ID
+	DE	Benutzer-ID
+	EN	User-ID
+	FR	Identifiant utilisateur
+	NL	Gebruikers-ID
+	ES	ID de usuario

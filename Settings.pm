@@ -1,6 +1,7 @@
 package Plugins::Qobuz::Settings;
-#Sven 2025-10-15 enhancements Version 30.6.3
+#Sven 2025-12-28 enhancements Version 30.6.6.5
 # All changes are marked with "#Sven" in source code
+# 2025-12-23 enhancements for managing users, if Material sends "user_id:xxx"
 
 use strict;
 use Digest::MD5 qw(md5_hex);
@@ -43,8 +44,6 @@ sub handler {
 
 	my $accounts = $prefs->get('accounts');
 
-	$log->error(Data::Dump::dump(keys %$params));
-
 	if ( $deleteId ) {
 		delete $accounts->{$deleteId};
 		$prefs->set('accounts', $accounts);
@@ -55,20 +54,31 @@ sub handler {
 		$params->{'pref_dontImportPurchases'} ||= 0;
 
 		foreach my $k (keys %$params) {
-			next if $k !~ /pref_dontimport_(.*)/;
+			next if $k !~ /pref_dontimport_(.*)/ && $k !~ /pref_lmsuser_(.*)/; #Sven 2025-12-23
 
 			my $id = $1;
 			my $account = $accounts->{$id} || next;
 
-			if ($params->{$k}) {
-				$account->{dontimport} = 1;
+			if ( $k =~ /pref_dontimport_(.*)/ ) {
+				if ($params->{$k}) {
+					$account->{dontimport} = 1;
+				}
+				else {
+					delete $account->{dontimport};
+				}
 			}
-			else {
-				delete $account->{dontimport};
+			else { #Sven 2025-12-23
+				if ($params->{$k}) {
+					$account->{lmsuser} = $params->{$k};
+				}
+				else {
+					delete $account->{lmsuser};
+				}
 			}
+
 		}
 
-		if ($params->{'username'} && $params->{'password'}) {
+		if ($params->{'username'} && $params->{'password'} ) {
 			my $username = $params->{'username'};
 			my $password = md5_hex(Encode::encode("UTF-8", $params->{'password'}));
 
@@ -92,8 +102,13 @@ sub handler {
 
 sub beforeRender {
 	my ($class, $params, $client) = @_;
-	$params->{accounts} = Plugins::Qobuz::API::Common->getAccountList();
+	$params->{accounts}    = Plugins::Qobuz::API::Common->getAccountList();
 	$params->{canImporter} = Plugins::Qobuz::Plugin::CAN_IMPORTER;
+
+	#Sven 2025-12-23
+	foreach ( @{$params->{accounts}} ) {
+		$_->[3] = $_->[0] unless ($_->[3]); 
+	}
 }
 
 1;

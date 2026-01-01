@@ -1,6 +1,7 @@
-#Sven 2025-12-23 enhancements version 30.6.6
+#Sven 2025-12-28 enhancements version 30.6.6.5
 # 2025-09-16 v30.6.2 - _precacheAlbum
 # 2025-10-16 - _precacheAlbum - albums of the week
+# 2025-12-23 enhancements for managing users, if Material sends "user_id:xxx"
 
 # $log->error(Data::Dump::dump( ));
 package Plugins::Qobuz::API::Common;
@@ -63,13 +64,16 @@ sub getAccountList {
 	} map {[
 		$_->{userdata}->{display_name} || $_->{userdata}->{login},
 		$_->{userdata}->{id},
-		$_->{dontimport}
+		$_->{dontimport},
+		$_->{lmsuser} #Sven 2025-12-23
+		
 	]} sort {
 		lc($a->{userdata}->{display_name} || $a->{userdata}->{login}) cmp lc($b->{userdata}->{display_name} || $b->{userdata}->{login});
 	} values %{ $prefs->get('accounts') } ];
 }
 
-sub getAccountCount {
+#Sven 2025-12-23
+sub getAccountCount {  
 	my ($class, $params) = @_;
 
 	my $accounts = getAccountList();
@@ -81,7 +85,7 @@ sub getAccountCount {
 
 			$user_Id = undef;
 			foreach ( @$accounts ) { 
-				if ( $_->[1] eq $userId || $_->[0] eq $userId ) { $user_Id = $_->[1]; last; }
+				if ( $_->[3] eq $userId ) { $user_Id = $_->[1]; last; }
 			}
 		}
 	}
@@ -89,6 +93,7 @@ sub getAccountCount {
 	return $count;
 }
 
+#Sven 2025-12-23
 sub hasValidUserId {
 	return ( defined $user_Id );
 }

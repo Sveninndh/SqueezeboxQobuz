@@ -1,6 +1,6 @@
 package Plugins::Qobuz::ProtocolHandler;
 
-#Sven 2025-09-14 Version 30.6.6
+#Sven 2025-11-05 Version 30.6.6
 #Sven 2022-05-06 support of https
 #Sven 2022-05-17 correction for playing Qobuz album favorites from LMS favorites
 #Sven 2022-05-16 needed since 2.5.1 because of subscribe/unsubscribe playlists

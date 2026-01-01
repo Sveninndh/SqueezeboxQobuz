@@ -6,7 +6,7 @@
 			[% IF accounts.0 %]
 				<tr>
 					<th>[% "PLUGIN_QOBUZ_ACCOUNT" | string %][% "COLON" | string %]</th>
-					<th>[% "PLUGIN_QOBUZ_ID" | string %][% "COLON" | string %]</th>
+					<th>[% "PLUGIN_QOBUZ_USER_ID" | string %][% "COLON" | string %]</th>
 					[% IF canImporter %]
 					<th>[% "PLUGIN_QOBUZ_IMPORT_LIBRARY"| string %][% "COLON" | string %]</th>
 					[% END %]
@@ -15,7 +15,7 @@
 				[% FOREACH account = accounts %]
 				<tr>
 					<td style="vertical-align: middle; padding-right: 10px">[% account.0 | html %]</td>
-					<td style="vertical-align: middle; padding-right: 10px">[% account.1 | html %]</td>
+					<td><input type="text" class="stdedit" name="pref_lmsuser_[% account.1 %]" id="pref_lmsuser_[% account.1 %]" value="[% account.3 %]" size="20" /></td>
 					[% IF canImporter %]
 					<td style="vertical-align: middle; padding-right: 10px">
 						<select class="stdedit" name="pref_dontimport_[% account.1 %]">
@@ -92,6 +92,7 @@
 				<option [% prefs.sortArtistAlbums ? "" : "selected" %] value="0" >[% "PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_ALPHA" | string %]</option>
 				<option [% prefs.sortArtistAlbums == 1 ? "selected" : "" %] value="1" >[% "PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_BY_DATE_NEW" | string %]</option>
 				<option [% prefs.sortArtistAlbums == 2 ? "selected" : "" %] value="2" >[% "PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_BY_DATE_OLD" | string %]</option>
+				<option [% prefs.sortArtistAlbums == 3 ? "selected" : "" %] value="3" >[% "PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_UNSORTED" | string %]</option>
 			</select>
 		[% END %]
 
