@@ -69,15 +69,17 @@ sub startStreaming {
 		format_id=> $format_id,
 	};
 
-	Plugins::Qobuz::Plugin::getAPIHandler($client)->checkPurchase('track', $track_id, sub {
+	my $api = Plugins::Qobuz::Plugin::getAPIHandler($client);
+
+	$api->checkPurchase('track', $track_id, sub {
 		$event->{purchase} = $_[0] ? JSON::XS::true : JSON::XS::false;
 
 		#Sven
-		Plugins::Qobuz::API::_post($client, 'track/reportStreamingStart', sub {
+		$api->_post('track/reportStreamingStart', sub {
 			$event->{duration} = $duration || 0;
 			$client->pluginData( streamingEvent => $event );
 			$cb->(@_) if $cb;
-		}, { _contentType => 'application/x-www-form-urlencoded', data => 'event=[' . to_json($event) . ']' });
+		}, { _use_token => 1, _contentType => 'application/x-www-form-urlencoded', data => 'event=[' . to_json($event) . ']' });
 	});
 }
 
@@ -127,7 +129,7 @@ sub endStreaming {
 	$event->{'date'} = time();
 	$event->{duration} = max($event->{duration}, time() - $event->{'date'});
 
-	Plugins::Qobuz::API::_post($client, 'track/reportStreamingEnd', $cb, { data => 'event=[' . to_json($event) . ']' }); #Sven
+	Plugins::Qobuz::Plugin::getAPIHandler($client)->_post('track/reportStreamingEnd', $cb, { _use_token => 1, data => 'event=[' . to_json($event) . ']' }); #Sven
 }
 
 sub _getTrackInfo {

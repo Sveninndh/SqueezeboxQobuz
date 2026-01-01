@@ -19,6 +19,7 @@ our @EXPORT = qw(
 use Slim::Utils::Cache;
 use Slim::Utils::Log;
 use Slim::Utils::Prefs;
+#use Scalar::Util qw(blessed); # nur einfügen wenn blessed benötigt wird
 
 use constant QOBUZ_BASE_URL => 'https://www.qobuz.com/api.json/0.2/';
 
@@ -100,6 +101,8 @@ sub hasValidUserId {
 
 sub getAccountData {
 	my ($class, $clientOrUserId) = @_;
+
+	# $log->error( (blessed $clientOrUserId) ? blessed($clientOrUserId) : Data::Dump::dump($clientOrUserId));
 
 	my $accounts = $prefs->get('accounts') || return;
 
