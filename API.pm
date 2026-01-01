@@ -191,11 +191,10 @@ sub search {
 	$args->{_ttl}  ||= QOBUZ_EDITORIAL_EXPIRY;
 	$args->{query} ||= $search;
 	$args->{type}  ||= $type if $type =~ /(?:albums|artists|tracks|playlists)/;
-	
 
-	$self->_pagingGet('catalog/search', sub {
+	my $getCB = sub {
 		my $results = shift;
-		
+
 		if ( !$args->{_dontPreCache} ) {
 			$self->_precacheArtistPictures($results->{artists}->{items}) if $results && $results->{artists};
 
@@ -207,7 +206,10 @@ sub search {
 		$cache->set($key, $results, 300);
 
 		$cb->($results);
-	}, $args, $type);
+	};
+
+	if ($type) { $self->_pagingGet('catalog/search', $getCB, $args, $type); }
+	else { $self->_get('catalog/search', $getCB, $args); }
 }
 
 #Sven 2020-03-30 new parameter $noalbums, if it is not undef, getArtist returns no extra album information.
@@ -323,7 +325,7 @@ sub getFeaturedAlbums {
 		_ttl     => QOBUZ_EDITORIAL_EXPIRY,
 	};
 
-	$args->{genre_id} = $genreId if $genreId;
+	$args->{genre_ids} = $genreId if $genreId;
 
 	$self->_pagingGet('album/getFeatured', sub {
 		my $albums = shift;
@@ -392,7 +394,7 @@ sub getUserFavorites {
 
 		$favorites->{albums}->{items} = _precacheAlbum($favorites->{albums}->{items})  if $favorites->{albums};
 		$favorites->{tracks}->{items} = _precacheTracks($favorites->{tracks}->{items}) if $favorites->{tracks};
-
+		#$log->error(Data::Dump::dump($favorites));
 		$cb->($favorites);
 	}, {
 		limit => QOBUZ_USERDATA_LIMIT,

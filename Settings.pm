@@ -26,7 +26,7 @@ sub prefs {
 	return ($prefs, 'filterSearchResults', 'playSamples', 'showComposerWithArtist', 'labelHiResAlbums', 'dontImportPurchases',
 			'appendVersionToTitle', 'sortFavsAlphabetically', 'sortArtistAlbums', 'showYearWithAlbum', 'useClassicalEnhancements',
 			'classicalGenres', 'workPlaylistPosition', 'parentalWarning', 'showDiscs', 'preferredFormat', 'groupReleases', 'importWorks',
-			'sortUserPlaylists', 'showUserPurchases');
+			'sortPlaylists', 'showUserPurchases', 'sortArtistsAlpha');
 }
 
 sub handler {

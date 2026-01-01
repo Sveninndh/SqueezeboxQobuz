@@ -1,6 +1,6 @@
 package Plugins::Qobuz::ProtocolHandler;
 
-#Sven 2024-01-27 Version 30.1.0
+#Sven 2025-09-14 Version 30.6.2
 #Sven 2022-05-06 support of https
 #Sven 2022-05-17 correction for playing Qobuz album favorites from LMS favorites
 #Sven 2022-05-16 needed since 2.5.1 because of subscribe/unsubscribe playlists
@@ -281,7 +281,7 @@ sub parseDirectHeaders {
 	$song->duration($duration);
 
 	if ($length && $contentType eq 'flc') {
-		$bitrate = $length*8 / ($duration - $offset) if $duration;
+		$bitrate = $length*8 / ($duration - $offset) if $duration > $offset;
 		$song->bitrate($bitrate) if $bitrate;
 	}
 
@@ -320,6 +320,10 @@ sub getMetadataFor {
 	}
 
 	$meta ||= {};
+	if ($meta->{composer} =~ /^\s*various\s*composers\s*$/i) { #3.6.0
+		delete $meta->{composer};
+		delete $meta->{work};
+	}
 	if ($meta->{mime_type} && $meta->{mime_type} =~ /(fla?c|mp)/) {
 		$meta->{type} = $meta->{mime_type} =~ /fla?c/ ? 'flc' : 'mp3';
 	}

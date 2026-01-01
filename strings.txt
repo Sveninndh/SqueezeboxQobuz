@@ -335,40 +335,45 @@ PLUGIN_QOBUZ_SORT_FAVORITES
 	NL	Sorteer Favorieten
 
 PLUGIN_QOBUZ_SORT_FAVORITES_ALPHA
-	DE	Alphabetisch sortieren
-	EN	Sort alphabetically
-	FR	Trier par ordre alphabétique
-	NL	alfabetisch te sorteren
-
+	DE	alphabetisch
+	EN	alphabetically
+	FR	alphabétique
+	NL	alfabetisch
 PLUGIN_QOBUZ_SORT_FAVORITE_ALBUMS_ALPHA
-	DE	Nach Interpret und Album sortieren
-	EN	Sort by artist and album
-	FR	Trier par artiste et album
-	NL	Sorteer op artiest en album
+	DE	nach Interpret und Album
+	EN	by artist and album
+	FR	par artiste et album
+	NL	op artiest en album
 
 PLUGIN_QOBUZ_SORT_FAVORITES_DEFAULT
-	DE	Nach Hinzufügedatum sortieren
-	EN	Sort by date added
-	FR	Trier par date d'ajout
-	NL	Sorteer op datum toegevoegd
+	DE	nach Hinzufügedatum
+	EN	by date added
+	FR	par date d'ajout
+	NL	op datum toegevoegd
+
+PLUGIN_QOBUZ_SORT_FAVORITES_ARTISTS
+	DE	Interpreten immer alphabetisch sortieren
+	EN	Always sort artists alphabetically
+	FR	Toujours trier les artistes par ordre alphabétique
+	NL	Sorteer artiesten altijd alfabetisch
 
 PLUGIN_QOBUZ_SORT_PLAYLISTS
-	DE	Playlisten sortiert nach
-	EN	Playlists sorted by
-	FR	Listes de lecture triés par
-	NL	Afspeellijsten gesorteerd op
+	DE	Playlisten sortieren
+	EN	Playlists sorted
+	FR	Listes de lecture triés
+	NL	Afspeellijsten gesorteerd
 
 PLUGIN_QOBUZ_SORT_PLAYLISTS_ALPHA
-	DE	Alphabetisch sortieren
-	EN	Sort alphabetically
-	FR	Trier par ordre alphabétique
-	NL	alfabetisch te sorteren
+	DE	alphabetisch
+	EN	alphabetically
+	FR	par ordre alphabétique
+	NL	alfabetisch
 
 PLUGIN_QOBUZ_SORT_PLAYLISTS_DEFAULT
-	DE	Nach Hinzufügedatum sortieren
-	EN	Sort by date added
-	FR	Trier par date d'ajout
-	NL	Sorteer op datum toegevoegd
+	DE	nach Hinzufügedatum
+	EN	by date added
+	FR	par date d'ajout
+	NL	op datum toegevoegd
 
 PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS
 	DE	Interpretenalben sortieren
@@ -377,22 +382,22 @@ PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS
 	NL	Artiestenalbums sorteren
 
 PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_ALPHA
-	DE	Alphabetisch sortieren
-	EN	Sort alphabetically
-	FR	Trier par ordre alphabétique
-	NL	Sorteer alphabetisch
+	DE	alphabetisch
+	EN	alphabetically
+	FR	par ordre alphabétique
+	NL	alphabetisch
 
 PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_BY_DATE_NEW
-	DE	Nach Veröffentlichungsdatum sortieren (neueste zuerst)
-	EN	Sort by release date (newest first)
-	FR	Trier par date de sortie (le plus récent en premier)
-	NL	Sorteer op releasedatum (nieuwste eerst)
+	DE	nach Veröffentlichungsdatum (neuestes zuerst)
+	EN	by release date (newest first)
+	FR	par date de sortie (le plus récent en premier)
+	NL	op releasedatum (nieuwste eerst)
 
 PLUGIN_QOBUZ_SORT_ARTIST_ALBUMS_BY_DATE_OLD
-	DE	Nach Veröffentlichungsdatum sortieren (älteste zuerst)
-	EN	Sort by release date (oldest first)
-	FR	Trier par date de sortie (la plus ancienne en premier)
-	NL	Sorteer op releasedatum (oudste eerst)
+	DE	nach Veröffentlichungsdatum (älteste zuerst)
+	EN	by release date (oldest first)
+	FR	par date de sortie (la plus ancienne en premier)
+	NL	op releasedatum (oudste eerst)
 
 PLUGIN_QOBUZ_HIRES
 	DE	^
@@ -751,3 +756,16 @@ PLUGIN_QOBUZ_FOCUS
 	FR	Focus
 	NL	Focus
 
+PLUGIN_QOBUZ_GENRE_SELECT
+	DE	Ein oder mehrere Genre wählen
+	EN	Select one or more genres
+	FR	Sélectionnez un ou plusieurs genres
+	NL	Selecteer een of meer genres
+	ES	Seleccione uno o más géneros
+
+PLUGIN_QOBUZ_GENRE_SELECTALL
+	DE	Alle auswählen
+	EN	Select all
+	FR	Tout sélectionner
+	NL	Selecteer alles
+	ES	Seleccionar todo

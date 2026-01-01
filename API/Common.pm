@@ -1,3 +1,4 @@
+#Sven 2025-09-16 v30.6.2 - _precacheAlbum
 package Plugins::Qobuz::API::Common;
 
 use strict;
@@ -47,7 +48,7 @@ sub initGenreMap {
 }
 
 sub getCache {
-	return $cache ||= Slim::Utils::Cache->new('qobuz', 4);
+	return $cache ||= Slim::Utils::Cache->new('qobuz', 5);
 }
 
 sub getAccountList {
@@ -128,12 +129,6 @@ sub username {
 	$class->getUserdata($clientOrUserId, 'login');
 }
 
-sub getArtistName {
-	my ($class, $track, $album) = @_;
-	$track->{performer} ||= $album->{performer} || {};
-	return $track->{performer}->{name} || $album->{artist}->{name} || '',
-}
-
 sub filterPlayables {
 	my ($class, $items) = @_;
 
@@ -144,6 +139,7 @@ sub filterPlayables {
 	} @$items ];
 }
 
+#Sven 2025-09-16 v30.6.2 
 sub _precacheAlbum {
 	my ($albums) = @_;
 
@@ -160,7 +156,7 @@ sub _precacheAlbum {
 		{
 			delete $album->{$_};
 		}
-
+		$album->{genrePath} = $album->{genre}->{path}; #Sven 2025-09-16 used for genre filter
 		$album->{genre} = $album->{genre}->{name};
 		$album->{image} = __PACKAGE__->getImageFromImagesHash($album->{image}) || '';
 
@@ -176,6 +172,7 @@ sub _precacheAlbum {
 			title  => $album->{title},
 			id     => $album->{id},
 			artist => $album->{artist},
+			artists => $album->{artists},
 			image  => $album->{image},
 			year   => substr($album->{release_date_stream},0,4),
 			goodies=> $album->{goodies},
@@ -244,13 +241,23 @@ sub precacheTrack {
 
 	my $album = $track->{album} || {};
 	$track->{composer} ||= $album->{composer} || {};
+	my ($artistNames, $artistIds);
+	foreach ( $class->getMainArtists($album) ) {
+		push @$artistNames, $_->{name};
+		push @$artistIds, $_->{id};
+	}
+	Plugins::Qobuz::API::Common->removeArtistsIfNotOnTrack($track, $artistNames, $artistIds);
+	if ($track->{performer} && $class->trackPerformerIsMainArtist($track) ) {
+		push @$artistNames, $track->{performer}->{name};
+		push @$artistIds, $track->{performer}->{id};
+	}
 
 	my $meta = {
 		title    => $track->{title} || $track->{id},
 		album    => $album->{title} || '',
 		albumId  => $album->{id},
-		artist   => $class->getArtistName($track, $album),
-		artistId => $album->{artist}->{id} || '',
+		artist   => $artistNames->[0],
+		artistId => $artistIds->[0],
 		composer => $track->{composer}->{name} || '',
 		composerId => $track->{composer}->{id} || '',
 		performers => $track->{performers} || '',
@@ -313,8 +320,10 @@ sub getMainArtists {
 	my $artistName;
 
 	if (ref $album->{artist}) {
-		push @artistList, $album->{artist};  # always include the primary artist
-		$artistName = lc($album->{artist}->{name});
+		if ( $album->{artist}->{name} !~ /^\s*various\s*artists\s*$/i ) {
+			push @artistList, $album->{artist};  # always include the primary artist
+			$artistName = lc($album->{artist}->{name});
+		}
 	}
 	if (ref $album->{artists} && scalar @{$album->{artists}}) {
 		for my $artist ( @{$album->{artists}} ) {  # get additional main artists, if any
@@ -324,6 +333,42 @@ sub getMainArtists {
 		}
 	}
 	return @artistList;
+}
+
+sub trackPerformerIsMainArtist {
+	my ($class, $track) = @_;
+
+	if ($track->{performers}) {
+		my $pname = $track->{performer}->{name};
+		$pname =~ s/\s+$//;   # trim the trailing white space
+		return $track->{performers} =~ m/\Q$pname\E([^\-]*)(Main\ ?Artist)/i;
+	}
+	else {
+		return 0;
+	}
+}
+
+sub removeArtistsIfNotOnTrack {
+	my ($class, $track, $artists, $artistIds) = @_;
+
+	if ( ( !$track->{album}->{genres_list} || grep(/Classique/,@{$track->{album}->{genres_list}}) ) && $artists && scalar @$artists ) {
+		my $mainArtist = $artists->[0];
+		my $mainArtistId = $artistIds->[0] if $artistIds;
+		for (my $i = 0; $i < @$artists; $i++) {
+			my $artist = $artists->[$i];
+			if ( $track->{performers} !~ /\Q$artist\E/i ) {
+				splice(@$artists, $i, 1);
+				splice(@$artistIds, $i, 1) if $artistIds;
+				$i--; # Adjust index after removal
+			}
+		}
+		# if all artists were removed, put back the main artist
+		if (!scalar @$artists) {
+			$artists->[0] = $mainArtist;
+			$artistIds->[0] = $mainArtistId if $mainArtistId;
+		}
+	}
+	return;
 }
 
 sub getStreamingFormat {
