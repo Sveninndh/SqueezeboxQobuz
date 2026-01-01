@@ -352,21 +352,13 @@ sub _prepareTrack {
 		$attributes->{DISCC} = $album->{media_count};
 	}
 
-	if ( $track->{composer} && $track->{composer}->{name} && $track->{composer}->{name} !~ /^\s*various\s*composers\s*$/i ) {
-		$attributes->{COMPOSER} = $track->{composer}->{name};
-		$attributes->{COMPOSER_EXTID} = 'qobuz:artist:' . $track->{composer}->{id};
-		if ( $track->{work} && $prefs->get('importWorks') ) {
-			$attributes->{WORK} = $track->{work};
-		}
-	}
-
 	if ($track->{audio_info}) {
 		$attributes->{REPLAYGAIN_TRACK_GAIN} = $track->{audio_info}->{replaygain_track_gain};
 		$attributes->{REPLAYGAIN_TRACK_PEAK} = $track->{audio_info}->{replaygain_track_peak};
 	}
 
+	# Populate the track artists
 	my ($artists, $artistIds);
-
 	foreach ( Plugins::Qobuz::API::Common->getMainArtists($album) ) {
 		push @$artists, $_->{name};
 		push @$artistIds, 'qobuz:artist:' . $_->{id};
@@ -383,14 +375,31 @@ sub _prepareTrack {
 		push @$artistIds, 'qobuz:artist:' . $track->{performer}->{id};
 	}
 
-	my $rolePerformer;
+	$attributes->{ARTIST} = $artists;
+	$attributes->{ARTIST_EXTID} = $artistIds;
+
+	# Populate the primary track composer
+	my ($composers, $composerIds, %seen);
+	if ( $track->{composer} && $track->{composer}->{name} && $track->{composer}->{name} !~ /^\s*various\s*composers\s*$/i ) {
+		my $name = $track->{composer}->{name};
+		$name =~ s/[\s\x{A0}]+/ /g;  # convert white space to a single space
+		push @$composers, $name;
+		$seen{uc($name)} = 1;  # add it to the seen composers hash table
+		push @$composerIds, 'qobuz:artist:' . $track->{composer}->{id};
+		if ( $track->{work} && $prefs->get('importWorks') ) {
+			$attributes->{WORK} = $track->{work};
+		}
+	}
+
 	if ($track->{performers}) {
-		my %seen;
+		# Gather performers and their roles from the track credits
+		my $rolePerformer;
 		my @performersAndRoles = split(' - ', $track->{performers});
 		foreach my $performerAndRoles (@performersAndRoles) {
 			my %roleSeen = undef;
 			my @roles = split(/\s*,\s*/, $performerAndRoles);
 			my $name = shift @roles;
+			$name =~ s/[\s\x{A0}]+/ /g;  # convert white space to a single space
 			foreach my $role (@roles) {
 				$role =~ s/\s*//gs;
 				$role = uc($role);
@@ -398,45 +407,60 @@ sub _prepareTrack {
 				$roleSeen{$role} = 1;
 			}
 		}
-		$attributes->{BAND} = $rolePerformer->{ORCHESTRA} if $rolePerformer->{ORCHESTRA};
-		$attributes->{CONDUCTOR} = $rolePerformer->{CONDUCTOR} if $rolePerformer->{CONDUCTOR};
-	}
 
-	$attributes->{ARTIST} = \@$artists;
-	$attributes->{ARTIST_EXTID} = \@$artistIds;
-
-	# create a map of artist id -> artist name tuples for the current item
-	my %trackArtists;
-	for (my $i = 0; $i < scalar @{$attributes->{ARTIST}}; $i++) {
-		$trackArtists{$attributes->{ARTIST}->[$i]} = $attributes->{ARTIST_EXTID}->[$i];
-	}
-
-	# if this is the first track, all track artists are potential album artists
-	if (!$albumArtists->{names}) {
-		$albumArtists->{names} = [ keys %trackArtists ];
-		$albumArtists->{ids} = [ values %trackArtists ];
-	}
-	# not the first track
-	else {
-		if ( !$albumArtists->{required} && join(',', sort(@{$albumArtists->{names}})) ne join(',', sort(@$artists)) ) {
-			$albumArtists->{required} = 1;
-		}
-		# we are only interested in the artists we have seen before - anything else is not considered an album artist
-		for (my $i = 0; $i < scalar @{$albumArtists->{names}}; $i++) {
-			if (!$trackArtists{$albumArtists->{names}->[$i]}) {
-				$albumArtists->{names}->[$i] = undef;
-				$albumArtists->{ids}->[$i] = undef;
+		# Populate secondary composers if any
+		if (!$track->{work}) { # works only allow one composer
+			if ($rolePerformer->{COMPOSER}) {
+				push @$composers, grep { !$seen{uc($_)}++ } @{$rolePerformer->{COMPOSER}};
+			}
+			elsif ($rolePerformer->{WRITER}) {  # if no track composers, use track writers
+				push @$composers, grep { !$seen{uc($_)}++ } @{$rolePerformer->{WRITER}};
 			}
 		}
 
-		# instead of fiddling with the index above I decided to wipe the value - now we have to remove empty values
-		@{$albumArtists->{names}} = grep { $_ } @{$albumArtists->{names}};
-		@{$albumArtists->{ids}} = grep { $_ } @{$albumArtists->{ids}};
+		$attributes->{BAND} = $rolePerformer->{ORCHESTRA} if $rolePerformer->{ORCHESTRA};
+		$attributes->{CONDUCTOR} = $rolePerformer->{CONDUCTOR} if $rolePerformer->{CONDUCTOR};
+
+		$attributes->{ARTIST} ||= $rolePerformer->{MAINARTIST}; # if no artist identified so far
+		$artists ||= $rolePerformer->{MAINARTIST};
 	}
 
-	$attributes->{ALBUMARTIST} = $albumArtists->{names};
-	$attributes->{ALBUMARTIST_EXTID} = $albumArtists->{ids};
+	$attributes->{COMPOSER} = $composers;
+	$attributes->{COMPOSER_EXTID} = $composerIds;
 
+	if ( ref $attributes->{ARTIST} eq 'ARRAY' ) {
+		# create a map of artist id -> artist name tuples for the current item
+		my %trackArtists;
+		for (my $i = 0; $i < scalar @{$attributes->{ARTIST}}; $i++) {
+			$trackArtists{$attributes->{ARTIST}->[$i]} = $attributes->{ARTIST_EXTID}->[$i];
+		}
+
+		# if this is the first track, all track artists are potential album artists
+		if (!$albumArtists->{names}) {
+			$albumArtists->{names} = [ keys %trackArtists ];
+			$albumArtists->{ids} = [ values %trackArtists ];
+		}
+		# not the first track
+		else {
+			if ( !$albumArtists->{required} && join(',', sort(@{$albumArtists->{names}})) ne join(',', sort(@$artists)) ) {
+				$albumArtists->{required} = 1;
+			}
+			# we are only interested in the artists we have seen before - anything else is not considered an album artist
+			for (my $i = 0; $i < scalar @{$albumArtists->{names}}; $i++) {
+				if (!$trackArtists{$albumArtists->{names}->[$i]}) {
+					$albumArtists->{names}->[$i] = undef;
+					$albumArtists->{ids}->[$i] = undef;
+				}
+			}
+
+			# instead of fiddling with the index above I decided to wipe the value - now we have to remove empty values
+			@{$albumArtists->{names}} = grep { $_ } @{$albumArtists->{names}};
+			@{$albumArtists->{ids}} = grep { $_ } @{$albumArtists->{ids}};
+		}
+
+		$attributes->{ALBUMARTIST} = $albumArtists->{names};
+		$attributes->{ALBUMARTIST_EXTID} = $albumArtists->{ids};
+	}
 	return $attributes;
 }
 

@@ -1,7 +1,9 @@
 
-#Sven 2024-10-16 enhancements version 30.6.3
+#Sven 2024-11-06 enhancements version 30.6.6
 # 2025-09-16 v30.6.2 - _precacheAlbum
 # 2025-10-16 - _precacheAlbum - albums of the week
+
+# $log->error(Data::Dump::dump( ));
 package Plugins::Qobuz::API::Common;
 
 use strict;
@@ -158,7 +160,7 @@ sub _precacheAlbum {
 	return unless ($albums && ref $albums eq 'ARRAY' && scalar @$albums); #Sven 2025-10-24;
 	
 	my $album = @$albums[0];
-	my $isEnhApi = (exists $album->{track_count}); #Sven 2025-10-15 - meta format of new enhanced API command
+	my $isEnhApi = (exists $album->{dates}); #Sven 2025-10-15 - meta format of new enhanced API command
 
 	$albums = __PACKAGE__->filterPlayables($albums, $isEnhApi);
 
@@ -175,7 +177,13 @@ sub _precacheAlbum {
 				{ delete $album->{$_}; }
 		} 
 		else { #Sven 2025-10-15 - album meta format of new enhanced API command
-			$album->{artist} = @{$album->{artists}}[0];
+			my $artist = $album->{artist};
+			$artist = @{$album->{artists}}[0] unless ($artist);	
+			if (ref $artist->{name} eq 'HASH') {
+				$artist->{name} = $artist->{name}->{display};
+				#$artist->{roles} = ["main-artist"];
+			}
+			$album->{artist} = $artist; # @{$album->{artists}}[0];
 			$album->{tracks_count} = $album->{track_count};
 			$album->{released_at} = _date2time($album->{dates}->{original});
 			$album->{release_date_stream} = $album->{dates}->{stream};
@@ -248,11 +256,11 @@ sub _date2time { # "YYYY-MM-DD"
 	timelocal(0, 0, 0, $day, $month - 1, $year); # In der aktuellen Perl Version darf nicht 1900 von $year abgezogen werden
 }
 
-##Sven 2025-10-23
+# Sven 2025-10-23
 sub _precacheTracks {
 	my ($tracks) = @_;
 
-	return unless ($tracks && ref $tracks eq 'ARRAY' && scalar @$tracks); #Sven 2025-10-24
+	return [] unless ($tracks && ref $tracks eq 'ARRAY' && scalar @$tracks); #Sven 2025-10-24
 	
 	my $isEnhApi = (exists @$tracks[0]->{rights}); #Sven 2025-10-23 - meta format of new enhanced API command
 
@@ -260,10 +268,21 @@ sub _precacheTracks {
 
 	foreach my $track (@$tracks) {
 		if ($isEnhApi) { #Sven 2025-10-23 - track meta format of the new enhanced API commands
-			my $artist = @{$track->{artists}}[0];
+			my $artist = $track->{artist};
+			$artist = @{$track->{artists}}[0] unless ($artist);	
+			if (ref $artist->{name} eq 'HASH') {
+				$artist->{name} = $artist->{name}->{display};
+				$artist->{roles} = ["main-artist"];
+			}
 			$track->{album}->{artist} = $artist;
 			$track->{artist} = $artist->{name};
 			$track->{artistId} = $artist->{id};
+
+			$artist = $track->{composer};
+			if ($artist && ref $artist->{name} eq 'HASH') {
+				$artist->{name} = $artist->{name}->{display};
+			}
+
 			$track->{track_number} = $track->{physical_support}->{track_number};
 			$track->{media_number} = $track->{physical_support}->{media_number};
 			$track->{hires_streamable} = $track->{rights}->{hires_streamable};
@@ -454,13 +473,24 @@ sub getImageFromImagesHash {
 	my ($class, $images) = @_;
 
 	return $images unless ref $images;
+
 	return $images->{mega} || $images->{extralarge} || $images->{large} || $images->{medium} || $images->{small} || $images->{thumbnail};
 }
 
+#Sven 2025-11-04
 sub getPlaylistImage {
 	my ($class, $playlist) = @_;
 
 	my $image;
+
+	#Sven new image format in new api commands
+	foreach ('image', 'images') {
+		if (ref $playlist->{$_} eq 'HASH' && ($image = $playlist->{$_}->{rectangle})) {
+			return @$image[0] if (ref $image eq 'ARRAY');
+			return $image;
+		}
+	}
+
 	# pick the last image, as this is what is shown top most in the Qobuz Desktop client
 	foreach ('image_rectangle', 'images300', 'images_300', 'images150', 'images_150', 'images') {
 		if ($playlist->{$_} && ref $playlist->{$_} eq 'ARRAY') {

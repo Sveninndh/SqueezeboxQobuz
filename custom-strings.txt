@@ -1,0 +1,27 @@
+# String file for Qobuz download function - Enhances from Sven
+PLUGIN_QOBUZ_DOWNLOAD_ENABLE
+	DE	Download-Modus aktivieren
+	EN	Enable download mode
+	FR	Activer le mode de téléchargement
+	NL	Schakel de downloadmodus in
+
+PLUGIN_QOBUZ_DOWNLOAD_DISABLE
+	DE	Download-Modus deaktivieren
+	EN	Disable download mode
+	FR	Désactiver le mode de téléchargement
+	NL	Schakel de downloadmodus uit
+
+PLUGIN_QOBUZ_DOWNLOAD_FOLDER
+	DE	Ordner für Downloads
+	EN	Folder for downloads
+	FR	Dossier de téléchargements
+	NL	Map Downloads
+
+PLUGIN_QOBUZ_DOWNLOAD_FOLDER_DESC
+	DE	Falls Sie einen Ordner für Downloads angeben, so werden die heruntergeladenen Musikdateien dort gespeichert.
+	EN	If you specify a folder for downloads, the downloaded music files will be saved there.
+	FR	Si vous spécifiez un dossier pour les téléchargements, les fichiers musicaux téléchargés y seront enregistrés.
+	NL	Als u een map opgeeft voor downloads, worden de gedownloade muziekbestanden daar opgeslagen.
+
+PLUGIN_QOBUZ_DOWNLOAD_DIR
+	EN	/data/Downloads

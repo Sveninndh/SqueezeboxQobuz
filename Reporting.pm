@@ -1,3 +1,6 @@
+#Sven 2024-11-05 enhancements version 30.6.6
+#Sven 2025-10-29 - startStreaming() uses now function _post()
+#Sven 2025-10-29 - endStreaming() uses now function _post(), endStreaming() is currently only sent when the next track starts playing. That's probably not how Qobuz intended it to work.
 package Plugins::Qobuz::Reporting;
 
 use strict;
@@ -17,8 +20,8 @@ tie my %reportedTracks, 'Tie::Cache::LRU::Expires', EXPIRES => 60, ENTRIES => 10
 
 my $prefs = preferences('plugin.qobuz');
 my $log = logger('plugin.qobuz');
-my $aid;
 
+#Sven 2025-10-29
 sub startStreaming {
 	my ($class, $client, $cb) = @_;
 
@@ -69,14 +72,16 @@ sub startStreaming {
 	Plugins::Qobuz::Plugin::getAPIHandler($client)->checkPurchase('track', $track_id, sub {
 		$event->{purchase} = $_[0] ? JSON::XS::true : JSON::XS::false;
 
-		_post('track/reportStreamingStart', $client, sub {
+		#Sven
+		Plugins::Qobuz::API::_post($client, 'track/reportStreamingStart', sub {
 			$event->{duration} = $duration || 0;
 			$client->pluginData( streamingEvent => $event );
 			$cb->(@_) if $cb;
-		}, $event);
+		}, { data => 'event=[' . to_json($event) . ']' });
 	});
 }
 
+#Sven 2025-10-29 - It's currently only sent when the next track starts playing. That's probably not how Qobuz intended it to work.
 sub endStreaming {
 	my ($class, $client, $cb) = @_;
 
@@ -122,7 +127,7 @@ sub endStreaming {
 	$event->{'date'} = time();
 	$event->{duration} = max($event->{duration}, time() - $event->{'date'});
 
-	_post('track/reportStreamingEnd', $client, $cb, $event);
+	Plugins::Qobuz::API::_post($client, 'track/reportStreamingEnd', $cb, { data => 'event=[' . to_json($event) . ']' }); #Sven
 }
 
 sub _getTrackInfo {
@@ -135,37 +140,6 @@ sub _getTrackInfo {
 	my ($track_id, $format) = Plugins::Qobuz::ProtocolHandler->crackUrl($url);
 
 	return ($url, $track_id, $format, $client->playingSong->duration);
-}
-
-sub _post {
-	my ( $url, $client, $cb, $event ) = @_;
-
-	$url = sprintf("%s%s?app_id=%s", Plugins::Qobuz::API::QOBUZ_BASE_URL(), $url, $aid ||= Plugins::Qobuz::API->aid() );
-	my $body = sprintf("events=[%s]&user_auth_token=%s", to_json($event), Plugins::Qobuz::API::Common->getToken($client));
-
-	main::INFOLOG && $log->is_info && $log->info("$url: " . to_json($event));
-
-	Slim::Networking::SimpleAsyncHTTP->new(
-		sub {
-			my $response = shift;
-
-			my $result = eval { from_json($response->content) };
-
-			$@ && $log->error($@);
-			main::DEBUGLOG && $log->is_debug && $log->debug("got $url: " . Data::Dump::dump($result));
-
-			$cb->($result) if $cb;
-		},
-		sub {
-			my ($http, $error) = @_;
-
-			$log->warn("Error: $error ($url)");
-			$cb->() if $cb;
-		},
-		{
-			timeout => 15,
-		},
-	)->post($url, 'Content-Type' => 'application/x-www-form-urlencoded', $body);
 }
 
 1;

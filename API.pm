@@ -1,6 +1,6 @@
 package Plugins::Qobuz::API;
 
-#Sven 2024-10-21 enhancements version 30.6.3
+#Sven 2024-11-05 enhancements version 30.6.6
 # All changes are marked with "#Sven" in source code
 # 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
 # 2022-05-13 added function setFavorite()
@@ -9,12 +9,18 @@ package Plugins::Qobuz::API;
 # 2022-05-20 added MyWeekly playlist
 # 2022-05-20 new parameter $type for getUserFavorites()
 # 2022-05-23 getAlbum() new parameter 'extra' and one optimisation
-# 2022-05-23 added getLabel()
 # 2022-05-23 added function getSimilarPlaylists()
 # 2023-10-07 Update of app_id handling
 # 2023-10-09 add sort configuration for function getUserPlaylists()
 # 2024-03-01 _pagingGet() optimisations, no limitations for albums, artists, tracks, playlists and search
 # 2025-10-21 getAlbums() used for 'albums of the week' and 'release radar'
+# 2025-10-16 added function _pagingGetMore()
+# 2025-10-21 added function getData()
+# 2025-10-23 added function getRadio()
+# 2025-10-29 added function _post(), for future use
+# 2025-10-30 added function getArtistPage()
+# 2025-11-01 optimisation of _lookupArtistPicture()
+# 2025-11-04 added functions getArtistPicture(), getArtistImageFromHash()
 
 # $log->error(Data::Dump::dump($albums));
 use strict;
@@ -80,6 +86,7 @@ my ($aid, $as, $cid);
 
 sub init {
 	($aid, $as, $cid) = Plugins::Qobuz::API::Common->init(@_);
+	#$log->error(Data::Dump::dump({ aid => $aid, as => $as, cid => $cid }));
 }
 
 sub login {
@@ -155,45 +162,6 @@ sub updateUserdata {
 	})
 }
 
-sub getMyWeekly {
-	my ($self, $cb) = @_;
-
-	$self->_pagingGet('dynamic-tracks/get', sub {
-		my $myWeekly = shift;
-		
-		$myWeekly->{tracks}->{items} = _precacheTracks($myWeekly->{tracks}->{items} || []) if $myWeekly->{tracks};
-
-		$cb->($myWeekly) if $cb;
-	}, {
-		type        => 'weekly',
-		limit       => 50,
-		_ttl        => QOBUZ_EDITORIAL_EXPIRY * 12,
-		_use_token  => 1,
-		_cid        => 1,
-	}, 'tracks');
-}
-
-sub getRadio {
-	my ($self, $cb, $args) = @_;
-	
-	my $type = ($args->{album_id}) ? 'album' : (($args->{artist_id}) ? 'artist' : 'track');
-	
-	$args->{limit}      = 50;
-	$args->{_ttl}       = QOBUZ_EDITORIAL_EXPIRY;
-	$args->{_use_token} = 1;
-	$args->{_cid}       = 1;
-	
-	#$log->error(Data::Dump::dump({ type => $type, args => $args }));
-	
-	$self->_get('radio/' . $type, sub {
-		my $radio = shift;
-		
-		$radio->{tracks}->{items} = _precacheTracks($radio->{tracks}->{items}) if (exists $radio->{tracks}->{items});
-		#$log->error(Data::Dump::dump($radio));
-		$cb->($radio);
-	}, $args);
-}
-
 sub search {
 	my ($self, $cb, $search, $type, $args) = @_;
 
@@ -235,6 +203,27 @@ sub search {
 	else { $self->_get('catalog/search', $getCB, $args); }
 }
 
+#Sven 2025-10-16 
+sub getRadio {
+	my ($self, $cb, $args) = @_;
+	
+	my $type = ($args->{album_id}) ? 'album' : (($args->{artist_id}) ? 'artist' : 'track');
+	
+	$args->{limit}      = 50;
+	$args->{_ttl}       = QOBUZ_EDITORIAL_EXPIRY;
+	$args->{_use_token} = 1;
+	$args->{_cid}       = 1;
+	
+	#$log->error(Data::Dump::dump({ type => $type, args => $args }));
+	
+	$self->_get('radio/' . $type, sub {
+		my $radio = shift;
+		
+		$radio->{tracks}->{items} = _precacheTracks($radio->{tracks}->{items}) if (exists $radio->{tracks}->{items});
+		$cb->($radio);
+	}, $args);
+}
+
 #Sven 2020-03-30 new parameter $noalbums, if it is not undef, getArtist returns no extra album information.
 sub getArtist {
 	my ($self, $cb, $artistId, $noalbums) = @_;
@@ -243,10 +232,8 @@ sub getArtist {
 		my $results = shift;
 
 		if ( $results && (my $images = $results->{image}) ) {
-			my $pic = Plugins::Qobuz::API::Common->getImageFromImagesHash($images);
-			$self->_precacheArtistPictures([
-				{ id => $artistId, picture => $pic }
-			]) if $pic;
+			my $image = Plugins::Qobuz::API::Common->getImageFromImagesHash($images);
+			$self->_precacheArtistPictures([ { id => $artistId, picture => $image } ]) if $image;
 		}
 
 		$results->{albums}->{items} = _precacheAlbum($results->{albums}->{items}) if $results->{albums};
@@ -259,33 +246,132 @@ sub getArtist {
 	});
 }
 
-sub getLabel {
-	my ($self, $cb, $labelId) = @_;
+#Sven 2025-10-31
+sub getArtistPage {
+	my ($self, $cb, $artistId) = @_;
 
-	$self->_pagingGet('label/get', sub {
-		my $albums = shift;
+	$self->_get('artist/page', sub {
+		my $results = shift;
 
-		$albums->{albums}->{items} = _precacheAlbum($albums->{albums}->{items}) if $albums->{albums};
+		$results->{name} = $results->{name}->{display};
 
-		$cb->($albums) if $cb;
-	}, {
-		label_id => $labelId,
-		extra     => 'albums',
-		limit     => QOBUZ_USERDATA_LIMIT,
-		_ttl      => QOBUZ_EDITORIAL_EXPIRY,
-	}, 'albums');
+		if ( $results && $results->{images} ) {
+			$results->{image} = $self->getArtistImageFromHash($artistId, $results->{images}->{portrait});
+			delete $results->{images};
+		}
+
+		foreach ( @{$results->{similar_artists}->{items}}) {
+			$_->{picture} = $self->getArtistImageFromHash($_->{id}, $_->{images}->{portrait});
+			$_->{name} = $_->{name}->{display};
+			delete $_->{images};
+		}
+
+		$results->{top_tracks} = _precacheTracks($results->{top_tracks});
+		
+		if ($results->{last_release}) {
+			my $albums = _precacheAlbum([$results->{last_release}]);
+            $results->{last_release} = @$albums[0];
+		}
+
+		foreach (@{$results->{releases}}) {		
+			$_->{items} = _precacheAlbum($_->{items});
+		}
+
+		$results->{tracks_appears_on} = _precacheTracks($results->{tracks_appears_on});
+
+		$cb->($results) if $cb;
+	}, { 
+		artist_id => $artistId,
+		_cid	  => 1,
+	});
 }
 
+#Sven 2025-11-05 - the get command used for a lot of Server commands
+# $args - contains a hash with the parameters for control
+# cmd   - the command that is sent to the Qobuz server contains
+# args  - Contains, if necessary, the parameters that must be sent with the command.
+# type  - contains the name of the result hash, 'artists' or 'playlists'
+sub getData {
+	my ($self, $cb, $pars) = @_;
+
+	my $cmd  = $pars->{cmd};
+	my $job  = (split(/\//, $cmd))[1];
+	my $args = $pars->{args};
+	my $type = $pars->{type} || '';
+	my $func;
+
+	$args->{_ttl} = QOBUZ_EDITORIAL_EXPIRY;
+	$args->{_use_token} = 1;
+	
+	#if ($job eq 'get') { $args->{limit} = QOBUZ_USERDATA_LIMIT; $type = 'albums'; }
+	if ($job eq 'page') { $func = \&_get; $args->{_cid} = 1; }
+	else { $args->{_cid} = 1; }
+
+	unless ($func) { 
+		if ($args->{_cid}) { $func = \&_pagingGetMore; }
+		else { 
+			$func = \&_pagingGet;
+			$args->{limit} = QOBUZ_USERDATA_LIMIT;
+		}
+	}
+
+	$func->($self, $cmd, sub {
+		my $result = shift;
+
+		if ($result->{artists}) {
+			foreach (@{$result->{items}}) {		
+				$_->{image} = $self->getArtistImageFromHash($_->{id}, $_->{image});
+			};
+		}
+		
+		$result->{albums}->{items} = _precacheAlbum($result->{albums}->{items}) if $result->{albums};
+
+		$result->{top_tracks} = _precacheTracks($result->{top_tracks}) if $result->{top_tracks};
+
+		if ($result->{releases}) {
+			foreach (@{$result->{releases}}) {		
+				$_->{data}->{items} = _precacheAlbum($_->{data}->{items});
+			};
+		}
+
+		if ($result->{top_artists}) {
+			foreach ( @{$result->{top_artists}->{items}} ) {
+				$_->{image} = $self->getArtistImageFromHash($_->{id}, $_->{image});
+			};
+		}
+
+		$cb->($result) if $cb;
+	}, $args, $type);
+}
+
+#Sven 2025-11-04
 sub getArtistPicture {
 	my ($self, $artistId) = @_;
 
 	my $url = $cache->get('artistpicture_' . $artistId) || '';
 
-	$self->_precacheArtistPictures([{ id => $artistId }]) unless $url;
-
+	unless ($url) {
+		$self->_precacheArtistPictures([{ id => $artistId }]);
+		$url = 'html/images/artists.png';
+	}
+	
 	return $url;
 }
 
+#Sven 2025-11-04
+sub getArtistImageFromHash {
+	my ($self, $artistId, $image) = @_;
+
+	return 'html/images/artists.png' unless $image->{hash}; 
+
+	my $picture = "https://static.qobuz.com/images/artists/covers/large/" . $image->{hash} . "." . $image->{format};
+
+	$self->_precacheArtistPictures([ { id => $artistId, picture => $picture } ]);
+
+	return $picture;
+}
+
+#Sven 2022-05-23
 sub getSimilarArtists {
 	my ($self, $cb, $artistId) = @_;
 
@@ -354,25 +440,6 @@ sub getFeaturedAlbums {
 		
 		$albums->{albums}->{items} = _precacheAlbum($albums->{albums}->{items}) if $albums->{albums};
 		
-		$cb->($albums);
-	}, $args, 'albums');
-}
-
-#Sven 2025-10-21 - the get command is in $pars->{cmd}
-sub getCmdAlbums {
-	my ($self, $cb, $pars) = @_;
-	
-	my $args = $pars->{args};
-	
-	$args->{_ttl}       = QOBUZ_EDITORIAL_EXPIRY;
-	$args->{_use_token} = 1;
-	$args->{_cid}       = 1;
-
-	$self->_pagingGetMore($pars->{cmd}, sub {
-		my $albums = shift;
-		
-		$albums->{albums}->{items} = _precacheAlbum($albums->{albums}->{items});
-
 		$cb->($albums);
 	}, $args, 'albums');
 }
@@ -733,7 +800,7 @@ sub _lookupArtistPicture {
 	}
 	else {
 		$artistLookup = 1;
-		$self->getArtist(sub { $self->_lookupArtistPicture() }, shift @artistsToLookUp);
+		$self->getArtist(sub { $self->_lookupArtistPicture() }, shift @artistsToLookUp, 1); #Sven 2025-11-01 - hier müssen keine Alben geholt werden, siehe getArtist()
 	}
 }
 
@@ -809,6 +876,8 @@ sub _get {
 		$log->info($data);
 	}
 
+	#$log->error($url);
+
 	my $cacheKey = $url . ($params->{_user_cache} ? $self->userId : '');
 	
 	if ($params->{_wipecache}) {
@@ -862,7 +931,6 @@ sub _get {
 		},
 	)->get($url, %headers);
 }
-
 
 # Da der Qobuz Server mit jedem angeforderten Request die Gesamtanzahl der Datensätze in dem Wert 'total' übermittelt,
 # kann man die Anzahl der Aufrufe vorher berechnen und diese Befehle asynchron hintereinander absenden und muss nicht warten bis der Server die Anwort schickt.
@@ -960,7 +1028,7 @@ sub _pagingGetMore {
 	my ( $self, $url, $cb, $params, $type ) = @_;
 	
 	my $limitTotal = $params->{limit} || QOBUZ_USERDATA_LIMIT;
-	$params->{limit}  = 50;
+	$params->{limit}  = ($params->{limit} && $params->{limit} < 50) ? $params->{limit} : 50; 
 	$params->{offset} =  0;
 	
 	my $cid = $params->{_cid};
@@ -976,7 +1044,7 @@ sub _pagingGetMore {
 			my $result = shift;
 					
 			if ($result) {
-				$result = $result->{$type} unless (exists $result->{has_more});
+				$result = $result->{$type} if ($type &&  ! exists $result->{has_more});
 			
 				push @$collector, @{$result->{items}} if $result->{items};
 				
@@ -993,11 +1061,75 @@ sub _pagingGetMore {
 					}
 				}	
 			}
-			$cb->({ $type => { items => $collector } });
+			if ($type) { $cb->({ $type => { items => $collector } }); }
+			else { $cb->({ items => $collector }); }
 		}, $params); 	
 	};	
 			
 	$getCBFn->();
+}
+
+#Sven 2025-10-29 - Da das neue Qobuz API mehrere POST Befehle enthält wurde _post() von Reporting nach API verschoben und vereinheitlicht.
+sub _post {
+	my ( $self, $url, $cb, $params ) = @_;
+
+	# need to get a token first?
+	my $token = '';
+
+	if (blessed $self) { 
+		$token = ($params->{_cid} || 0)
+			? Plugins::Qobuz::API::Common->getWebToken($self)
+			: Plugins::Qobuz::API::Common->getToken($self);
+		if ( !$token ) {
+			$log->error('No or invalid user session');
+			$cb->() if $cb;
+			return;
+		}
+	}
+
+	$params->{user_auth_token} = $token if delete $params->{_use_token};
+
+	$params ||= {};
+
+	my $appId = (delete $params->{_cid} && $cid) || $aid;
+	my $body  = $params->{data};
+
+	$url = QOBUZ_BASE_URL . $url; 
+
+	$body .= '&app_id=' . $appId if $params->{_appId};
+	$body .= '&user_auth_token=' . $params->{user_auth_token} if $params->{user_auth_token};
+	
+	main::INFOLOG && $log->is_info && $log->info("$url: " . $body);
+
+	my %headers = (
+		'Content-Type' => 'application/json', # 'application/x-www-form-urlencoded',
+		'X-User-Auth-Token' => $token,
+		'X-App-Id' => $appId,
+	);
+
+	$headers{'User-Agent'} = ($prefs->get('useragent') || BROWSER_UA) if $appId == $cid;
+
+	Slim::Networking::SimpleAsyncHTTP->new(
+		sub {
+			my $response = shift;
+
+			my $result = eval { from_json($response->content) };
+
+			$@ && $log->error($@);
+			main::DEBUGLOG && $log->is_debug && $log->debug("got $url: " . Data::Dump::dump($result));
+
+			$cb->($result) if $cb;
+		},
+		sub {
+			my ($http, $error) = @_;
+
+			$log->warn("Error: $error ($url)");
+			$cb->() if $cb;
+		},
+		{
+			timeout => 15,
+		},
+	)->post($url, %headers, $body);
 }
 
 sub aid { $aid }

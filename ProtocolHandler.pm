@@ -1,6 +1,6 @@
 package Plugins::Qobuz::ProtocolHandler;
 
-#Sven 2025-09-14 Version 30.6.2
+#Sven 2025-11-05 Version 30.6.6
 #Sven 2022-05-06 support of https
 #Sven 2022-05-17 correction for playing Qobuz album favorites from LMS favorites
 #Sven 2022-05-16 needed since 2.5.1 because of subscribe/unsubscribe playlists
@@ -24,7 +24,7 @@ use Plugins::Qobuz::Reporting;
 use constant MP3_BITRATE => 320_000;
 use constant CAN_FLAC_SEEK => (Slim::Utils::Versions->compareVersions($::VERSION, '8.0.0') >= 0 && UNIVERSAL::can('Slim::Utils::Scanner::Remote', 'parseFlacHeader'));
 
-use constant PAGE_URL_REGEXP => qr{^qobuz:(album:|//playlist:|//)([a-z0-9]+)}; #qr{(?:open|play)\.qobuz\.com/(.+)/([a-z0-9]+)};
+use constant PAGE_URL_REGEXP => qr{^qobuz:(album:|//playlist:|//)([a-z0-9]+)}; # Original: qr{(?:open|play)\.qobuz\.com/(.+)/([a-z0-9]+)};
 Slim::Player::ProtocolHandlers->registerURLHandler(PAGE_URL_REGEXP, __PACKAGE__) if Slim::Player::ProtocolHandlers->can('registerURLHandler');
 
 my $cache = Plugins::Qobuz::API::Common->getCache();
@@ -136,7 +136,7 @@ sub explodePlaylist {
 
 			my $uris = { type => 'opml', title => '' }; #Sven 2022-05-27
 
-			if ($response && ref $response && $response->{tracks}) {
+			if ($response && ref $response eq 'HASH' && $response->{tracks} && ref $response->{tracks} eq 'HASH') {
 				$uris->{items} = [
 					map {
 						Plugins::Qobuz::Plugin::_trackItem($client, $_);
