@@ -1028,3 +1028,53 @@ PLUGIN_QOBUZ_AWARDS
 	FR	Prix
 	NL	Prijzen
 	ES	Premios
+
+PLUGIN_QOBUZ_SAMEARTIST
+	DE	Vom selben Act
+	EN	By the same artist
+	FR	Du même actartiste...
+	NL	Van dezelfde uitvoerende
+	ES	Del mismo artista...	
+
+PLUGIN_QOBUZ_ALBUM_VIEW_TYPE
+	DE	Albumansicht
+	EN	Album view
+	FR	Affichage des albums
+	NL	Albumweergave
+	ES	Vista del álbum
+
+PLUGIN_QOBUZ_AV_ALBUM_INFO
+	DE	Albumname, gefolgt von Albuminformationen 
+	EN	Album name followed by album information
+	FR	Nom de l'album suivi des informations sur l'album
+	NL	Albumnaam gevolgd door albuminformatie
+	ES	Nombre del álbum seguido de la información del álbum.
+
+PLUGIN_QOBUZ_AV_TRACKS_INFO
+	DE	Alle Titel, gefolgt von Albuminformationen
+	EN	All tracks followed by album information
+	FR	Toutes les pistes suivies d'un menu d'informations sur l'album
+	NL	Alle nummers gevolgd door albuminformatie
+	ES	Todas las pistas seguidas de un menú de información del álbum.
+
+PLUGIN_QOBUZ_AV_TRACKS_INFOMENU
+	DE	Alle Titel, gefolgt von einem Menü Albuminformationen
+	EN	All tracks followed by an album information menu
+	FR	Tous les titres d'album suivis d'un menu d'informations sur l'album
+	NL	Alle nummers gevolgd door een albuminformatiemenu
+	ES	Todos los títulos de los álbumes seguidos de un menú de información del álbum.
+
+PLUGIN_QOBUZ_ALBUM_INFOMENU
+	DE	Albuminformationen
+	EN	Album information
+	FR	Informations sur l'album
+	NL	Albuminformatie
+	ES	Información del álbum
+
+PLUGIN_QOBUZ_ALBUMLIST_EMPTY
+	DE	Die Albumliste ist leer! Die Liste 'Release Radar' ist z.B. leer, wenn es in ihren Favoriten keine Artisten gibt.
+	EN	The album list is empty! For example, the 'Release Radar' list is empty if there are no artists in your favorites.
+	FR	La liste des albums est vide ! Par exemple, la liste « Release Radar » est vide s'il n'y a aucun artiste dans vos favoris.
+	NL	De albumlijst is leeg! De lijst 'Release Radar' is bijvoorbeeld leeg als er geen artiesten in de favorieten staan.
+	ES	¡La lista de álbumes está vacía! Por ejemplo, la lista 'Release Radar' está vacía si no hay artistas en tus favoritos.
+

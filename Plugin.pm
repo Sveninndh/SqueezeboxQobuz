@@ -1,5 +1,5 @@
 =head Infos
-Sven 2025-11-24 enhancements based on version 1.400 up to 3.6.6
+Sven 2025-12-14 enhancements based on version 1.400 up to 3.6.6.2
 
 This program is free software; you can redistribute it and/or label
 modify it under the terms of the GNU General Public License, version 2.
@@ -33,7 +33,9 @@ modify it under the terms of the GNU General Public License, version 2.
 22. added new album list 'Release Radar' and 'Albums of the week'.
 23. added list of labels to explore
 24. added a list of all awards.
-23. added new awards page and labels page, awards and labels page are used now in the album page
+25. added new awards page and labels page, awards and labels page are used now in the album page
+26. added new setting album view
+
 
 all changes are marked with "#Sven" in source code
 changed files: Common.pm, API.pm, Plugin.pm, ProtocolHandler.pm, Settings.pm, strings.txt and basic.html from .../Qobuz/HTML/EN/plugins/Qobuz/settings/basic.html
@@ -107,7 +109,8 @@ $prefs->init({
 	showUserPurchases => 1,
 	genreFilter => '##',
 	genreFavsFilter => '##',
-	sortArtistsAlpha => 1
+	sortArtistsAlpha => 1,
+	albumViewType => 0,
 });
 
 $prefs->migrate(1,
@@ -431,9 +434,8 @@ sub handleFeed {
 	
 	if ($client && scalar @{ Plugins::Qobuz::API::Common::getAccountList() } > 1) {
 		my $account = Plugins::Qobuz::API::Common->getAccountData($client);
-		#$log->error(Data::Dump::dump($account));
 		push @$items, {
-			name => $account->{userdata}->{display_name}. ' - ' . cstring($client, 'PLUGIN_QOBUZ_SELECT_ACCOUNT') , #Sven 2025-10-22
+			name => cstring($client, 'PLUGIN_QOBUZ_ACCOUNT') . ': ' . $account->{userdata}->{display_name}, #Sven 2025-12-14
 			image => __PACKAGE__->_pluginDataFor('icon'),
 			url => \&QobuzSelectAccount,
 		};
@@ -470,40 +472,47 @@ sub QobuzSelectAccount {
 	$cb->({ items => $items });
 }
 
-sub QobuzGetWebToken {
+#Sven 2025-11-06
+sub QobuzValidateWebToken {
 	my ($client, $cb, $params) = @_;
 
+	return 0 unless (Plugins::Qobuz::API::Common->getToken($client) && ! Plugins::Qobuz::API::Common->getWebToken($client));
+	
 	my $username = Plugins::Qobuz::API::Common->username($client);
 
-	return $cb->({ items => [{
-		type => 'textarea',
-		name => cstring($client, 'PLUGIN_QOBUZ_REAUTH_DESC'),
-	},{
-		name  => sprintf('%s (%s)', cstring($client, 'PLUGIN_QOBUZ_PREFS_PASSWORD'), $username),
-		type  => 'search',
-		url  => sub {
-			my ($client, $cb, $params) = @_;
+	$cb->({ items => [
+		{
+			type => 'textarea',
+			name => cstring($client, 'PLUGIN_QOBUZ_REAUTH_DESC'),
+		},{
+			name  => sprintf('%s (%s)', cstring($client, 'PLUGIN_QOBUZ_PREFS_PASSWORD'), $username),
+			type  => 'search',
+			url  => sub {
+				my ($client, $cb, $params) = @_;
 
-			getAPIHandler($client)->login($username, $params->{search}, sub {
-				my $success = shift;
+				getAPIHandler($client)->login($username, $params->{search}, sub {
+					my $success = shift;
 
-				$cb->({ items => [ $success
-					? {
-						name => cstring($client, 'SETUP_CHANGES_SAVED'),
-						nextWindow => 'home',
-					}
-					: {
-						name => cstring($client, 'PLUGIN_QOBUZ_AUTH_FAILED'),
-						nextWindow => 'parent',
-					}
-				] });
-			},{
-				cid => 1,
-				token => 'success',
-			});
-		},
-		passthrough => [ { type => 'search' } ],
-	}] });
+					$cb->({ items => [ $success
+						? {
+							name => cstring($client, 'SETUP_CHANGES_SAVED'),
+							nextWindow => 'home',
+						}
+						: {
+							name => cstring($client, 'PLUGIN_QOBUZ_AUTH_FAILED'),
+							nextWindow => 'parent',
+						}
+					] });
+				},{
+					cid => 1,
+					token => 'success',
+				});
+			},
+			passthrough => [ { type => 'search' } ],
+		}
+	] });
+
+	return 1;
 }
 
 #Sven 2025-11-05 - get artists or playlists
@@ -514,9 +523,7 @@ sub QobuzGetWebToken {
 sub QobuzGetList {
 	my ($client, $cb, $params, $args) = @_;
 
-	if (Plugins::Qobuz::API::Common->getToken($client) && !Plugins::Qobuz::API::Common->getWebToken($client)) {
-		return QobuzGetWebToken(@_);
-	}
+	return if QobuzValidateWebToken(@_);
 
 	my $type = $args->{type};
 
@@ -541,9 +548,7 @@ sub QobuzGetList {
 sub QobuzGetAlbums {
 	my ($client, $cb, $params, $args) = @_;
 	
-	if (Plugins::Qobuz::API::Common->getToken($client) && !Plugins::Qobuz::API::Common->getWebToken($client)) {
-		return QobuzGetWebToken(@_);
-	}
+	return if QobuzValidateWebToken(@_);
 	
 	unless (exists $args->{args}->{genre_ids}) { $args->{args}->{genre_ids} = _getGenres(); }; #Sven 2025-09-16 v30.6.2
 
@@ -557,8 +562,13 @@ sub QobuzGetAlbums {
 			$album->{line1} = Slim::Utils::DateTime::shortDateF($_->{released_at}) . ' - ' . $album->{line1} if ($args->{showDate});
 			$album;
 		} @{$albums->{albums}->{items}};
-		
-		$cb->({ items => \@items });
+
+		if (scalar @items) {
+			$cb->({ items => \@items });
+		}
+		else {
+			$cb->({ items => [{	name => cstring($client, 'PLUGIN_QOBUZ_ALBUMLIST_EMPTY') }]}); #Sven 2025-12-14
+		}
 		
 	}, $args);
 }
@@ -567,9 +577,7 @@ sub QobuzGetAlbums {
 sub QobuzRadio {
 	my ($client, $cb, $params, $args) = @_;
 
-	if (Plugins::Qobuz::API::Common->getToken($client) && !Plugins::Qobuz::API::Common->getWebToken($client)) {
-		return QobuzGetWebToken(@_);
-	}
+	return if QobuzValidateWebToken(@_);
 	
 	getAPIHandler($client)->getRadio(sub {
 		my $radio = shift;
@@ -584,7 +592,7 @@ sub QobuzRadio {
 
 		$cb->({ items => [
 			{
-				name => cstring($client, 'PLUGIN_QOBUZ_RADIO_' . uc substr($radio->{type}, 6)) . ' - ' . $radio->{title},
+				name  => cstring($client, 'PLUGIN_QOBUZ_RADIO_' . uc substr($radio->{type}, 6)) . ' - ' . $radio->{title},
 				image => $radio->{images}->{large},
 				type  => 'playlist',
 				items => \@tracks,
@@ -599,6 +607,8 @@ sub QobuzRadio {
 #Sven 2025-11-05 - a selection of labels suggested by qobuz
 sub QobuzLabels {
 	my ($client, $cb, $params, $args) = @_;
+
+	return if QobuzValidateWebToken(@_);
 
 	$args->{cmd}  = 'label/explore'; 
 	$args->{args} = { limit => 95 };
@@ -622,6 +632,8 @@ sub QobuzLabels {
 sub QobuzLabelPage {
 	my ($client, $cb, $params, $labelId) = @_;
 
+	return if QobuzValidateWebToken(@_);
+
 	my $args = { cmd => 'label/page', args => { label_id => $labelId } };
 
 	getAPIHandler($client)->getData(sub {
@@ -634,7 +646,7 @@ sub QobuzLabelPage {
 		push @$items, {
 			name  => $label->{name},
 			image => $label->{image},
-			type  => 'text',
+			#type  => 'text' #Sven 2025-12-14 - Verursacht beim Anklicken einen Sprung ins Hauptmenu als Untermenü. absurdes Verhalten, nur wenn es der erste Menüpunkt ist.
 		};
 
 		if ($label->{description}) {
@@ -732,6 +744,8 @@ sub QobuzLabelPage {
 sub QobuzAwardsExplore {
 	my ($client, $cb, $params, $args) = @_;
 
+	return if QobuzValidateWebToken(@_);
+
 	$args->{cmd}  = 'award/explore'; # 'list'; 
 	$args->{args} = { limit => 50 };
 
@@ -758,6 +772,8 @@ sub QobuzAwardsExplore {
 sub QobuzAwardPage {
 	my ($client, $cb, $params, $awardId) = @_;
 
+	return if QobuzValidateWebToken(@_);
+
 	my $args = { cmd => 'award/page', args => { award_id => $awardId } };
 
 	getAPIHandler($client)->getData(sub {
@@ -770,7 +786,7 @@ sub QobuzAwardPage {
 		push @$items, {
 			name  => $award->{name},
 			image => $award->{image} || 'plugins/Qobuz/html/images/awards.png',
-			type  => 'text',
+			#type  => 'text' #Sven 2025-12-14 - Verursacht beim Anklicken einen Sprung ins Hauptmenu als Untermenü. absurdes Verhalten, nur wenn es der erste Menüpunkt ist.
 		};
 
 		if ($award->{description}) {
@@ -1114,8 +1130,8 @@ sub browseArtistMenu {
 	}
 
 	$cb->([{
-		type  => 'text',
 		title => cstring($client, 'EMPTY'),
+		#type  => 'text' #Sven 2025-12-14 - Verursacht beim Anklicken einen Sprung ins Hauptmenu als Untermenü. absurdes Verhalten, nur wenn es der erste Menüpunkt ist.
 	}]);
 }
 
@@ -1146,7 +1162,7 @@ sub QobuzArtist {
 			push @$items, {
 				name  => $artist->{name},
 				image => $api->getArtistPicture($artist->{id}),
-				type  => 'text'
+				#type  => 'text' #Sven 2025-12-14 - Verursacht beim Anklicken einen Sprung ins Hauptmenu als Untermenü. absurdes Verhalten, nur wenn es der erste Menüpunkt ist.
 			}
 		}	
 		
@@ -1755,7 +1771,8 @@ sub _quality {
 	return $meta->{bitrate};
 }
 
-#Sven 2022-05-05 shows album infos before playing music, it is an enhanced version 'sub QobuzGetTracks {'
+#Sven 2022-05-05 shows album infos before playing music, it is an enhanced version.
+#Sven 2025-12-13 The album view is now configurable
 sub QobuzGetTracks {
 	my ($client, $cb, $params, $args) = @_;
 	my $albumId = $args->{album_id};
@@ -1774,7 +1791,7 @@ sub QobuzGetTracks {
 
 				push @$items, {
 					name  => cstring($client, 'PLUGIN_QOBUZ_ALBUM_NOT_FOUND'),
-					type  => 'text'
+					#type  => 'text' #Sven 2025-12-14 - Verursacht beim Anklicken einen Sprung ins Hauptmenu als Untermenü. absurdes Verhalten, nur wenn es der erste Menüpunkt ist.
 				};
 
 				if ($isFavorite) {  # if it's an orphaned favorite, let the user delete it
@@ -1798,7 +1815,7 @@ sub QobuzGetTracks {
 		} elsif (!$album->{streamable} && !$prefs->get('playSamples')) {  # the album is not streamable
 			push @$items, {
 				name  => cstring($client, 'PLUGIN_QOBUZ_NOT_AVAILABLE'),
-				type  => 'text'
+				#type  => 'text' #Sven 2025-12-14 - Verursacht beim Anklicken einen Sprung ins Hauptmenu als Untermenü. absurdes Verhalten, nur wenn es der erste Menüpunkt ist.
 			};
 
 			$cb->({
@@ -2030,19 +2047,27 @@ sub QobuzGetTracks {
 		#Therefore the genre is displayed first in the first line.
 		#Since 2022 that's not true any more, playlist can be the first element.
 
-		#Playlist
-		push @$items, {
-#			name  => ($album->{version} ? $album->{title} . ' - ' . $album->{version} : $album->{title}),
-			name  => sprintf('%s %s %s', ($album->{version} ? $album->{title} . ' - ' . $album->{version} : $album->{title}), cstring($client, 'BY'), $album->{artist}->{name}),
-#			line1 => $album->{title} || '', 
-			line2 => _countDuration($client, $album->{tracks_count}, $totalDuration). ' - (' . _quality($album) . ')',
-			image => ref $album->{image} ? $album->{image}->{large} : $album->{image},
-			type  => 'playlist',
-			items => $tracks,
-			favorites_url  => 'qobuz:album:' . $album->{id}, # war ein funktionierender Fix für Material-Skin, dort fehlte bis 2.9.5 der Menüpunkt "In Favoriten speichern" im Contextmenu
-			favorites_type => 'playlist', # Standardwert ist 'playlist', sonst 'audio' (für Radios oder Tracks)
-		};
-
+		
+		#Sven 2025-12-13
+		my $dptype = $prefs->get('albumViewType');
+		if ( $dptype eq "0") {
+			#Playlist
+			push @$items, {
+	#			name  => ($album->{version} ? $album->{title} . ' - ' . $album->{version} : $album->{title}),
+				name  => sprintf('%s %s %s', ($album->{version} ? $album->{title} . ' - ' . $album->{version} : $album->{title}), cstring($client, 'BY'), $album->{artist}->{name}),
+	#			line1 => $album->{title} || '', 
+				line2 => _countDuration($client, $album->{tracks_count}, $totalDuration). ' - (' . _quality($album) . ')',
+				image => ref $album->{image} ? $album->{image}->{large} : $album->{image},
+				type  => 'playlist',
+				items => $tracks,
+				favorites_url  => 'qobuz:album:' . $album->{id}, # war ein funktionierender Fix für Material-Skin, dort fehlte bis 2.9.5 der Menüpunkt "In Favoriten speichern" im Contextmenu
+				favorites_type => 'playlist', # Standardwert ist 'playlist', sonst 'audio' (für Radios oder Tracks)
+			};
+		}
+		elsif ( $dptype eq "1") {
+			$items = $tracks;
+		}	
+		
 		if (!_isReleased($album) ) {
 			my $rDate = _localDate($album->{release_date_stream});
 			push @$items, {
@@ -2155,7 +2180,7 @@ sub QobuzGetTracks {
 			#$log->error(Data::Dump::dump($album->{albums_same_artist}));
 			my @albums = map { _albumItem($client, $_) } @{$album->{albums_same_artist}->{items}};
 			push @$items, { 
-				name => 'Vom selben Act', #cstring($client, 'PLUGIN_QOBUZ_SUGGEST'),
+				name => cstring($client, 'PLUGIN_QOBUZ_SAMEARTIST'),
 				type => 'albums', #Sven - view type
 				items => \@albums, 
 			} if scalar @albums;
@@ -2184,6 +2209,17 @@ sub QobuzGetTracks {
 			url  => \&QobuzManageFavorites,
 			passthrough => [{refalbum => $album, album => $albumname, albumId => $albumId, artist => $artistname, artistId => $album->{artist}->{id}}]
 		};
+
+		#Sven 2025-12-13
+		if ( $dptype eq "2") {
+			push @$tracks, {
+				name => cstring($client, 'PLUGIN_QOBUZ_ALBUM_INFOMENU'),
+				type => 'menu', #'link',
+				items => $items
+			};
+
+			$items = $tracks;
+		}	
 
 		$cb->({
 			items => $items
@@ -2393,7 +2429,7 @@ sub _albumItem {
 			$item->{line2} = '* ' . $item->{line2};
 		}
 		#Sven 2019-03-17 call the new album info menu	
-		$item->{type}        = 'link';
+		$item->{type}        = ($prefs->get('albumViewType') eq "0") ? 'link' : 'playlist';
 		$item->{url}         = \&QobuzGetTracks;
 		$item->{passthrough} = [{ album_id => $album->{id}, album_title => $album->{title} }];
 		#$item->{isContextMenu} = 1;

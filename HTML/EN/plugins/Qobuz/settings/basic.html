@@ -52,6 +52,14 @@
 				<option [% prefs.showUserPurchases ? "" : "selected" %] value="0" >[% "NO" | string %]</option>
 			</select>
 		[% END %]
+
+		[% WRAPPER settingGroup title="PLUGIN_QOBUZ_ALBUM_VIEW_TYPE" desc="" %]
+			<select name="pref_albumViewType" id="albumViewType">
+				<option [% prefs.albumViewType ? "" : "selected" %] value="0" >[% "PLUGIN_QOBUZ_AV_ALBUM_INFO" | string %]</option>
+				<option [% prefs.albumViewType == 1 ? "selected" : "" %] value="1" >[% "PLUGIN_QOBUZ_AV_TRACKS_INFO" | string %]</option>
+				<option [% prefs.albumViewType == 2 ? "selected" : "" %] value="2" >[% "PLUGIN_QOBUZ_AV_TRACKS_INFOMENU" | string %]</option>
+			</select>
+		[% END %]
 		
 		[% WRAPPER settingGroup title="PLUGIN_QOBUZ_SHOW_COMPOSER_WITH_ARTIST" desc="" %]
 			<select name="pref_showComposerWithArtist" id="showComposerWithArtist">
@@ -116,6 +124,7 @@
 				<option [% prefs.useClassicalEnhancements ? "" : "selected" %] value="0" >[% "NO" | string %]</option>
 			</select>
 		[% END %]
+
 		[% WRAPPER settingGroup title="PLUGIN_QOBUZ_WORK_PLAYLIST_POSITION" desc="" %]
 			<select name="pref_workPlaylistPosition" id="workPlaylistPosition">
 				<option [% prefs.workPlaylistPosition == "before" ? "selected" : "" %] value="before" >[% "PLUGIN_QOBUZ_WORK_PLAYLIST_POSITION_BEFORE" | string %]</option>
@@ -123,6 +132,7 @@
 				<option [% prefs.workPlaylistPosition == "integrated" ? "selected" : "" %] value="integrated" >[% "PLUGIN_QOBUZ_WORK_PLAYLIST_POSITION_INTEGRATED" | string %]</option>
 			</select>
 		[% END %]
+
 		[% WRAPPER settingGroup title="PLUGIN_QOBUZ_CLASSICAL_GENRES" desc="PLUGIN_QOBUZ_CLASSICAL_GENRES_DESC" %]
 			<input type="text" class="stdedit" name="pref_classicalGenres" id="classicalGenres" value="[% prefs.classicalGenres %]" size="80">
 		[% "PLUGIN_QOBUZ_USE_CLASSICAL_ENHANCEMENTS_TEXT" | string %]
