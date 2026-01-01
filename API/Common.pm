@@ -1,8 +1,12 @@
-#Sven 2025-09-16 v30.6.2 - _precacheAlbum
+
+#Sven 2024-10-15 enhancements version 30.6.3
+# 2025-09-16 v30.6.2 - _precacheAlbum
+# 2025-10-15 - _precacheAlbum - albums of the week
 package Plugins::Qobuz::API::Common;
 
 use strict;
 use Exporter::Lite;
+use Time::Local qw( timelocal ); #Sven 2025-10-15 - albums of the week
 
 our @EXPORT = qw(
 	QOBUZ_BASE_URL QOBUZ_DEFAULT_EXPIRY QOBUZ_USER_DATA_EXPIRY QOBUZ_EDITORIAL_EXPIRY QOBUZ_DEFAULT_LIMIT QOBUZ_LIMIT QOBUZ_USERDATA_LIMIT
@@ -139,15 +143,18 @@ sub filterPlayables {
 	} @$items ];
 }
 
-#Sven 2025-09-16 v30.6.2 
+#Sven 2025-09-16, 2025-10-15 v30.6.2 
 sub _precacheAlbum {
 	my ($albums) = @_;
 
 	return unless $albums && ref $albums eq 'ARRAY';
+	
+	my $album = @$albums[0];
+	my $isDefault = (defined $album->{released_at}); #Sven 2025-10-15 - albums of the week
 
-	$albums = __PACKAGE__->filterPlayables($albums);
+	$albums = __PACKAGE__->filterPlayables($albums) if $isDefault; #Sven 2025-10-15 - albums of the week
 
-	foreach my $album (@$albums) {
+	foreach $album (@$albums) {
 		foreach (qw(composer articles article_ids catchline
 			# maximum_bit_depth maximum_channel_count maximum_sampling_rate maximum_technical_specifications
 			popularity previewable qobuz_id sampleable slug streamable_at subtitle created_at
@@ -159,6 +166,16 @@ sub _precacheAlbum {
 		$album->{genrePath} = $album->{genre}->{path}; #Sven 2025-09-16 used for genre filter
 		$album->{genre} = $album->{genre}->{name};
 		$album->{image} = __PACKAGE__->getImageFromImagesHash($album->{image}) || '';
+		unless ($isDefault) { #Sven 2025-10-15 - albums of the week
+			$album->{artist} = @{$album->{artists}}[0];
+			$album->{tracks_count} = $album->{track_count};
+			delete $album->{track_count};
+			$album->{released_at} = _date2time($album->{dates}->{original});
+			$album->{hires_streamable} = $album->{rights}->{hires_streamable};
+			$album->{streamable} = $album->{rights}->{streamable};
+			delete $album->{rights};
+			delete $album->{dates};
+		}
 
 		# If the user pref is for classical music enhancements to the display, is this a classical release or has the user added the genre to their custom classical list?
 		$isClassique = 0;
@@ -190,7 +207,7 @@ sub _precacheAlbum {
 		_precacheTracks([ map {
 			$_->{album} = $albumInfo;
 			$_;
-		} @{$album->{tracks}->{items}} ]);
+		} @{$album->{tracks}->{items}} ]) if $isDefault; #Sven 2025-10-15 - albums of the week
 
 		if (defined $albumInfo->{replay_gain}) {
 			$album->{replay_gain} = $albumInfo->{replay_gain};
@@ -211,6 +228,16 @@ sub _precacheAlbum {
 	}
 
 	return $albums;
+}
+
+#Sven 2025-10-15 - albums of the week
+sub _date2time { # "YYYY-MM-DD"
+	my ($date) = @_;
+	
+	my ($year, $month, $day) = split /-/, $date;
+	
+	# Create Unix time (Seconds sinse 1970-01-01 00:00:00 UTC)
+	return timelocal(0, 0, 0, $day, $month - 1, $year - 1900); # UTC
 }
 
 sub _precacheTracks {

@@ -1,5 +1,5 @@
 package Plugins::Qobuz::Settings;
-#Sven 2023-10-10 enhancements Version 20.16.10
+#Sven 2025-10-15 enhancements Version 30.6.3
 # All changes are marked with "#Sven" in source code
 
 use strict;
@@ -68,7 +68,7 @@ sub handler {
 
 		if ($params->{'username'} && $params->{'password'}) {
 			my $username = $params->{'username'};
-			my $password = md5_hex($params->{'password'});
+			my $password = md5_hex(Encode::encode("UTF-8", $params->{'password'}));
 
 			Plugins::Qobuz::API->login($username, $password, sub {
 				my $token = shift;

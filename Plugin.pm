@@ -1,5 +1,9 @@
 =head Infos
-Sven 2025-03-22 enhancements based on version 1.400 up to 3.6.2
+Sven 2025-10-15 enhancements based on version 1.400 up to 3.6.3
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License, version 2.
+
  1. included a new album information menu befor playing the album
 	It shows: Samplesize, Samplerate, Genre, Duration, Description if present, Goodies (Booklet) if present,
 	trackcount, Credits including performers, Conductor if present, Artist, Composer, ReleaseDate, Label (with label albums),
@@ -19,7 +23,8 @@ Sven 2025-03-22 enhancements based on version 1.400 up to 3.6.2
 12. added delete my own playlists
 13. added much more compatibility and useability with LMS favorites
 14. added a TrackMenu, you get it if you click on a track item and select the more... menu item, 2025-03-22
-15. added genre filter for user favorites, albums and playlists 2025-03-17, the previous genre menu is removed
+15. added genre filter for user favorites, albums and playlists 2025-09-17, the previous genre menu is removed
+16. added albums of the week 2025-10-15 
 
 all changes are marked with "#Sven" in source code
 changed files: Common.pm, API.pm, Plugin.pm, ProtocolHandler.pm, Settings.pm, strings.txt and basic.html from .../Qobuz/HTML/EN/plugins/Qobuz/settings/basic.html
@@ -36,7 +41,7 @@ use base qw(Slim::Plugin::OPMLBased);
 
 use JSON::XS::VersionOneAndTwo;
 use Tie::RegexpHash;
-#use POSIX qw(strftime); ??? geht scheinbar auch ohne
+use POSIX qw(strftime); #??? geht scheinbar auch ohne
 
 use Slim::Formats::RemoteMetadata;
 use Slim::Player::ProtocolHandlers;
@@ -538,15 +543,17 @@ sub QobuzAlbums {
 	
 	my @types = (
 		['new-releases',		'PLUGIN_QOBUZ_NEW_RELEASES'],
-		#['recent-releases',		'PLUGIN_QOBUZ_RECENT_RELEASES'],
-		['press-awards',		'PLUGIN_QOBUZ_PRESS'],
-		['most-streamed',		'PLUGIN_QOBUZ_MOST_STREAMED'],
-		['editor-picks',		'PLUGIN_QOBUZ_EDITOR_PICKS'],
 		['ideal-discography',	'PLUGIN_QOBUZ_IDEAL_DISCOGRAPHY'],
+		['most-streamed',		'PLUGIN_QOBUZ_MOST_STREAMED'],
 		['qobuzissims',			'PLUGIN_QOBUZ_QOBUZISSIMS'],
+		['albumOfTheWeek',		'PLUGIN_QOBUZ_ALBUMS_OF_THE_WEEK'], #Sven 2025-10-15 - albums of the week
+		['press-awards',		'PLUGIN_QOBUZ_PRESS'],
+		['editor-picks',		'PLUGIN_QOBUZ_EDITOR_PICKS'],
 		['best-sellers',		'PLUGIN_QOBUZ_BESTSELLERS'],
 		['most-featured',		'PLUGIN_QOBUZ_MOST_FEATURED'],
 		['new-releases-full',	'PLUGIN_QOBUZ_NEW_RELEASES_FULL'],
+		#['recent-releases',	'PLUGIN_QOBUZ_RECENT_RELEASES'],
+		#['re-release-of-the-week',	're-release-of-the-week'],
 		#['harmonia-mundi',		'harmonia-mundi'],
 		#['universal-classic',	'universal-classic'],
 		#['universal-jazz',		'universal-jazz'],
@@ -568,7 +575,7 @@ sub QobuzAlbums {
 	foreach (@types) { 
 		push @$items, {
 			name => cstring($client, $$_[1]),
-			url  => \&QobuzFeaturedAlbums,
+			url  => ($$_[0] eq 'albumOfTheWeek') ? \&QobuzDiscover : \&QobuzFeaturedAlbums, #Sven 2025-10-15 - albums of the week
 			image => 'html/images/albums.png',
 			type  => 'albums', #Sven - view type
 			passthrough => [{ genreId => $genreId, type => $$_[0] }]
@@ -1046,13 +1053,40 @@ sub QobuzFeaturedAlbums {
 	my $genreId = $args->{genreId};
 	
 	unless ($genreId) { $genreId = _getGenres(); }; #Sven 2025-09-16 v30.6.2
-
+	
 	getAPIHandler($client)->getFeaturedAlbums(sub {
 		my $albums = shift;
 
 		my $items = [];
 
 		foreach my $album ( @{$albums->{albums}->{items}} ) {
+			push @$items, _albumItem($client, $album);
+		}
+
+		$cb->({
+			items => $items
+		})
+	}, $type, $genreId);
+}
+
+#Sven 2025-10-15 - albums of the week
+sub QobuzDiscover {
+	my ($client, $cb, $params, $args) = @_;
+	my $type    = $args->{type};
+	my $genreId = $args->{genreId};
+	
+	unless ($genreId) { $genreId = _getGenres(); }; #Sven 2025-09-16 v30.6.2
+	
+	if (Plugins::Qobuz::API::Common->getToken($client) && !Plugins::Qobuz::API::Common->getWebToken($client)) {
+		return QobuzGetWebToken(@_);
+	}
+	
+	getAPIHandler($client)->getDiscover(sub {
+		my $albums = shift;
+
+		my $items = [];
+
+		foreach my $album ( @{$albums->{items}} ) {
 			push @$items, _albumItem($client, $album);
 		}
 
@@ -1312,7 +1346,6 @@ sub QobuzPublicPlaylists {
 sub _playlistCallback {
 	my ($searchResult, $cb, $showOwner, $isWeb, $cmd) = @_;
 
-	#$log->error(Data::Dump::dump($searchResult));
 	$searchResult = ($searchResult->{playlists}) ? $searchResult->{playlists} : $searchResult->{similarPlaylist}; #Sven 2022-05-23
 
 	my $playlists = [];
@@ -1346,8 +1379,6 @@ sub QobuzSimilarPlaylists {
 #Sven 2022-05-11 called from _playlistItem
 sub QobuzPlaylistItem {
 	my ($client, $cb, $params, $playlist, $args) = @_;
-
-	#$log->error(Data::Dump::dump($args));
 
 	my $items = []; #ref array
 
@@ -2077,8 +2108,8 @@ sub _albumItem {
 		$item->{line1} = $albumname;
 		#$item->{line2} = $artist . " (" . $album->{tracks_count}. ' - ' . (ref $album->{genre} ? $album->{genre}->{name} : $album->{genre}) . ($albumYear ? ' - ' . $albumYear . ')' : ')'); #Sven 2023-10-09 track_count, genre and year added
 		$item->{line2} = ( join(', ', map { $_->{name} } Plugins::Qobuz::API::Common->getMainArtists($album)) || $artist )
-						. " (" . $album->{tracks_count}. ' - ' . (ref $album->{genre} ? $album->{genre}->{name} : $album->{genre}) . ($albumYear ? ' - ' . $albumYear . ')' : ')') #Sven 2023-10-09 track_count, genre and year added
-						. ($albumYear ? ' (' . $albumYear . ')' : '');
+						. " (" . $album->{tracks_count}. ' - ' . (ref $album->{genre} ? $album->{genre}->{name} : $album->{genre}) . ($albumYear ? ' - ' . $albumYear . ')' : ')'); #Sven 2023-10-09 track_count, genre and year added
+#						. ($albumYear ? ' (' . $albumYear . ')' : '');
 		$item->{name} .= $albumYear ? "\n(" . $albumYear . ')' : '';
 	}
 
@@ -2115,9 +2146,7 @@ sub _albumItem {
 sub _artistItem {
 	my ($client, $artist, $withIcon) = @_;
 	my $artistId = $artist->{id};
-	
-	#$log->error($artist->{name} . ' ' . $artistId . ': ' . $artist->{picture});
-	
+
 	if (!$artistId) {
 		getAPIHandler($client)->search(sub {
 			my $searchResult = shift;
@@ -2166,11 +2195,12 @@ sub _playlistItem {
 	};
 }
 
-#Sven 2023-10-08
+#Sven 2023-10-08, 2025-09-22
 sub _trackItem {
 	my ($client, $track, $isWeb) = @_;
 
 	my $title  = Plugins::Qobuz::API::Common->addVersionToTitle($track);
+	if ($track->{track_number}) { $title = sprintf('%02s. %s', $track->{track_number}, $title); } #
 	my $album  = $track->{album};
 	#my $artist = Plugins::Qobuz::API::Common->getArtistName($track, $album);
 	my $artistNames = [ map { $_->{name} } Plugins::Qobuz::API::Common->getMainArtists($album) ];
@@ -2263,8 +2293,8 @@ sub _trackItem {
 		$item->{playall}   = 1;
 	}
 
-	#$item->{url} = $item->{play} if $item->{play}; #Wurde am 26.10.2025 von Michael Herger hinzugefügt, wegen Material-Skin? Dise Änderung hatte mein Track-Menü verschwinden lassen.
-	if ($item->{play}) { #Sven 22.09.205 jetzt wird das Track-Menü erst erzeugt und angezeigt, wenn auf den Track geklickt wird und der Menüpunkt More... gewählt wird.
+	#$item->{url} = $item->{play} if $item->{play}; #Wurde am 26.10.2024 von Michael Herger hinzugefügt, wegen Material-Skin? Diese Änderung hatte mein Track-Menü verschwinden lassen.
+	if ($item->{play}) { #Sven 2025-09-22 jetzt wird das Track-Menü erst erzeugt und angezeigt, wenn auf den Track geklickt wird und der Menüpunkt 'Mehr...' gewählt wird.
 		$item->{url} = \&QobuzTrackMenu;
 		$item->{passthrough} = [{ album => $album, title => $item->{name}, artist => $artist, track => $track }];
 	};
@@ -2308,7 +2338,7 @@ sub QobuzTrackMenu {
 	$cb->( { items => $items } );
 }
 
-#Sven called from track in playlist, creates the 'On Qobuz' menu item in the more menu
+#Sven the context menu of a track, creates the 'On Qobuz' menu item in the more menu
 sub trackInfoMenu {
 	my ( $client, $url, $track, $remoteMeta, $tags ) = @_;
 
@@ -2324,7 +2354,8 @@ sub trackInfoMenu {
 
 	my $items = [];
 
-	if ( my ($trackId) = Plugins::Qobuz::ProtocolHandler->crackUrl($url) ) {
+	my ($trackId) = Plugins::Qobuz::ProtocolHandler->crackUrl($url); #Sven 2025-09-27 fix $trackId is defined only with Qobuz url
+	if ( defined $trackId) {
 		my $albumId = $remoteMeta ? $remoteMeta->{albumId} : undef;
 		my $artistId= $remoteMeta ? $remoteMeta->{artistId} : undef;
 
@@ -2468,6 +2499,9 @@ sub albumInfoMenu {
 sub _objInfoHandler {
 	my ( $client, $artist, $album, $track, $items, $label, $labelId, $composer, $work ) = @_;
 
+	#Sven 2025-09.28 fix for context menu of a radio playlist item, no 'on Qobuz' if album or artist is not present.
+	$track = undef unless ($artist || $album); 
+
 	$items ||= [];
 
 	push @$items, {
@@ -2477,28 +2511,25 @@ sub _objInfoHandler {
 			labelId  => $labelId,
 		}],
 	} if $label && $labelId;
-	
-	my $nameType = {};
-	$nameType->{$artist} = cstring($client, 'ARTIST');
-	$nameType->{$album} = cstring($client, 'ALBUM');
-	$nameType->{$track} = cstring($client, 'TRACK');
-	$nameType->{$_} = cstring($client, 'COMPOSER') foreach @$composer;
-	$nameType->{$_} = cstring($client, 'PLUGIN_QOBUZ_WORK') foreach @$work;
 
-	my %seen;
-	foreach ($artist, $album, $track, @$composer, @$work) {
-		# prevent duplicate entries if eg. album & artist have the same name
-		next if $seen{$_};
+	#Sven 2025-09-28 QobuzSearch with type (albums, artists, tracks, ...), optimized code which is independent from unknown names.
+	my $sItems = [ 
+		{ type => 'artists', value => $artist, caption => 'ARTIST' },
+		{ type => 'albums',  value => $album,  caption => 'ALBUM' },
+		{ type => 'tracks',  value => $track,  caption => 'TRACK' },
+	];
+	push @$sItems, { type => 'artists',  value => $_,  caption => 'COMPOSER' } foreach @$composer;
+	push @$sItems, { type => 'works',    value => $_,  caption => 'PLUGIN_QOBUZ_WORK' } foreach @$work;
 
-		$seen{$_} = 1;
-
+	foreach (@$sItems) {
 		push @$items, {
-			name => cstring($client, 'PLUGIN_QOBUZ_SEARCH', $nameType->{$_}, $_),
+			name => cstring($client, 'PLUGIN_QOBUZ_SEARCH', cstring($client, $_->{caption}), $_->{value}),
 			url  => \&QobuzSearch,
 			passthrough => [{
-				q => $_,
+				q => $_->{value},
+				type => $_->{type}, #Sven 2025-09-28
 			}]
-		} if $_;
+		} if $_->{value};
 	}
 
 	my $menu;

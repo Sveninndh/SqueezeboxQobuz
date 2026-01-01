@@ -1,6 +1,6 @@
 package Plugins::Qobuz::API;
 
-#Sven 2024-08-10 enhancements version 30.5.4
+#Sven 2024-10-15 enhancements version 30.6.3
 # All changes are marked with "#Sven" in source code
 # 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
 # 2022-05-13 added function setFavorite()
@@ -14,6 +14,7 @@ package Plugins::Qobuz::API;
 # 2023-10-07 Update of app_id handling
 # 2023-10-09 add sort configuration for function getUserPlaylists()
 # 2024-03-01 _pagingGet() optimisations, no limitations for albums, artists, tracks, playlists and search
+# 2025-10-15 getDiscover() used for 'albums of the week'
 
 use strict;
 use base qw(Slim::Utils::Accessor);
@@ -158,7 +159,7 @@ sub getMyWeekly {
 
 	$self->_pagingGet('dynamic-tracks/get', sub {
 		my $myWeekly = shift;
-
+		
 		$myWeekly->{tracks}->{items} = _precacheTracks($myWeekly->{tracks}->{items} || []) if $myWeekly->{tracks};
 
 		$cb->($myWeekly);
@@ -329,8 +330,29 @@ sub getFeaturedAlbums {
 
 	$self->_pagingGet('album/getFeatured', sub {
 		my $albums = shift;
-
+		
 		$albums->{albums}->{items} = _precacheAlbum($albums->{albums}->{items}) if $albums->{albums};
+		$cb->($albums);
+	}, $args, 'albums');
+}
+
+#Sven 2025-10-15 - albums of the week
+sub getDiscover {
+	my ($self, $cb, $type, $genreId) = @_;
+
+	my $args = {
+		limit    => QOBUZ_USERDATA_LIMIT,
+		_ttl     => QOBUZ_EDITORIAL_EXPIRY,
+		_use_token  => 1,
+		_cid        => 1,
+	};
+
+	$args->{genre_ids} = $genreId if $genreId;
+
+	$self->_pagingGet('discover/' . $type, sub {
+		my $albums = shift;
+		
+		$albums->{items} = _precacheAlbum($albums->{items}) if $albums;
 		$cb->($albums);
 	}, $args, 'albums');
 }

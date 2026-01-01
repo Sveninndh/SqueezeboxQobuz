@@ -1,4 +1,4 @@
-# String file for Qobuz plugin 30.5.4 - Enhancements from SvenInNdh
+# String file for Qobuz plugin 30.6.3 - Enhancements from SvenInNdh
 
 PLUGIN_QOBUZ
 	EN	Qobuz
@@ -703,16 +703,23 @@ PLUGIN_QOBUZ_BESTSELLERS
 	FR	Meilleures Ventes
 
 PLUGIN_QOBUZ_MOST_STREAMED
-	DE	Die meistengehörten Alben
-	EN	Most streamed
+	DE	Album-Charts
+	EN	Album charts
+	FR	Classements d'albums
+	NL	Albumlijsten
+	ES	Listas de álbumes
 
 PLUGIN_QOBUZ_MOST_FEATURED
 	DE	Die meistgenannten Alben
 	EN	Most featured
 
 PLUGIN_QOBUZ_IDEAL_DISCOGRAPHY
-	DE	Qobuz' perfekte Schallplattensammlung
-	EN	Ideal discography
+	DE	Qobuz' Schallplattensammlung
+	EN	Qobuz' discography
+	FR	Qobuz' collection de disques
+	NL	Qobuz' platencollectie
+	ES	Qobuz' colección de discos
+
 
 PLUGIN_QOBUZ_SUBCRIPTION
 	DE	Abonnement
@@ -769,3 +776,11 @@ PLUGIN_QOBUZ_GENRE_SELECTALL
 	FR	Tout sélectionner
 	NL	Selecteer alles
 	ES	Seleccionar todo
+
+PLUGIN_QOBUZ_ALBUMS_OF_THE_WEEK
+	DE	Alben der Woche
+	EN	Albums of the week
+	FR	Albums de la semaine
+	NL	Albums van de week
+	ES	Álbumes de la semana
+

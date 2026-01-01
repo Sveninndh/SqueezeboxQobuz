@@ -27,7 +27,7 @@ use constant CAN_FLAC_SEEK => (Slim::Utils::Versions->compareVersions($::VERSION
 use constant PAGE_URL_REGEXP => qr{^qobuz:(album:|//playlist:|//)([a-z0-9]+)}; #qr{(?:open|play)\.qobuz\.com/(.+)/([a-z0-9]+)};
 Slim::Player::ProtocolHandlers->registerURLHandler(PAGE_URL_REGEXP, __PACKAGE__) if Slim::Player::ProtocolHandlers->can('registerURLHandler');
 
-my $cache = Plugins::Qobuz::API::Common->getCache(); #Ab wird nur in getIcon() verwendet
+my $cache = Plugins::Qobuz::API::Common->getCache();
 my $log   = logger('plugin.qobuz');
 my $prefs = preferences('plugin.qobuz');
 
@@ -112,7 +112,7 @@ sub getFormatForURL {
 #Sven 2022-05-27 correction for playing Qobuz album favorites from LMS favorites
 sub explodePlaylist {
 	my ( $class, $client, $url, $cb ) = @_;
-
+	
 	my ($type, $id) = $url =~ PAGE_URL_REGEXP;
 	($type, $id) = $url =~ /^qobuz:(\w+):(\w+)$/ if !($type && $id);
 
@@ -164,7 +164,6 @@ sub trackGain {
 		return undef;
 	}
 
-	my $cache = Plugins::Qobuz::API::Common->getCache();
 	my $gain = 0;
 	my $peak = 0;
 	my $netGain = 0;
@@ -403,6 +402,22 @@ sub getMetadataFor {
 	return $meta;
 }
 
+sub getIcon {
+	my ($class, $url) = @_;
+
+	my ($type, $id) = $url =~ /^qobuz:(\w+):(\w+)$/;
+
+	if ($type && $type eq 'album') {
+		my $meta = $cache->get('albumInfo_' . $id) || {};
+		return $meta->{image} if $meta->{image};
+	}
+
+	($id) = $class->crackUrl($url) unless $type && $id;
+	my $meta = $cache->get('trackInfo_' . $id) || {};
+
+	return Plugins::Qobuz::API::Common->getImageFromImagesHash($meta->{cover});
+}
+
 sub getNextTrack {
 	my ($class, $song, $successCb, $errorCb) = @_;
 
@@ -428,7 +443,7 @@ sub getNextTrack {
 				if (CAN_FLAC_SEEK && $format =~ /fla?c/i) {
 					main::INFOLOG && $log->is_info && $log->info("Getting flac header information for: " . $song->streamUrl);
 					my $http = Slim::Networking::Async::HTTP->new;
-					$http->send_request(Plugins::Qobuz::Addon::check({
+					my $args = {
 						request     => HTTP::Request->new( GET => $song->streamUrl ),
 						onStream    => \&Slim::Utils::Scanner::Remote::parseFlacHeader,
 						onError     => sub {
@@ -437,7 +452,9 @@ sub getNextTrack {
 							$successCb->();
 						},
 						passthrough => [ $song->track, { cb => $successCb }, $song->streamUrl ],
-					}, $id, $format, $errorCb));
+					};
+					Plugins::Qobuz::Addon::check($args, $id, $format, $errorCb);
+					$http->send_request($args);
 				} else {
 					$successCb->();
 				}
@@ -468,34 +485,24 @@ sub audioScrobblerSource {
 	return 'P';
 }
 
-#Sven 2023-10-28 for URL handlers to get the track icon without having a client.
+=head #Sven 2023-10-28 for URL handlers to get the track icon without having a client.
+#Meine alte Version, vor Löschung erst testen ob die neue Version gleich gut oder besser ist. 
 sub getIcon {
 	my ( $class, $url ) = @_;
 
-#	my ($id) = $class->crackUrl($url);
-#	Ab hier neue Version von Michael
-	my ($type, $id) = $url =~ /^qobuz:(\w+):(\w+)$/;
+	my ($id) = $class->crackUrl($url);
 
-	if ($type && $type eq 'album') {
-		my $meta = $cache->get('albumInfo_' . $id) || {};
-		return $meta->{image} if $meta->{image};
+	$id ||= $url;
+	unless ($id =~ /^qobuz:album/) {
+		my $meta = Plugins::Qobuz::API->getTrackInfo(sub {}, $id);
+		
+		if ($meta->{cover} && ref $meta->{cover}) {
+			$meta->{cover} = Plugins::Qobuz::API::Common->getImageFromImagesHash($meta->{cover});
+		}
+		return $meta->{cover};
 	}
-
-	($id) = $class->crackUrl($url) unless $type && $id;
-	my $meta = $cache->get('trackInfo_' . $id) || {};
-
-	return Plugins::Qobuz::API::Common->getImageFromImagesHash($meta->{cover});
-#	Ab hier meine alte Version, vor Löschung erst testen ob die neue Verion gleich gut oder besser ist. 
-#	$id ||= $url;
-#	unless ($id =~ /^qobuz:album/) {
-#		my $meta = Plugins::Qobuz::API->getTrackInfo(sub {}, $id);
-#		
-#		if ($meta->{cover} && ref $meta->{cover}) {
-#			$meta->{cover} = Plugins::Qobuz::API::Common->getImageFromImagesHash($meta->{cover});
-#		}
-#		return $meta->{cover};
-#	}
-#	return '';
+	return '';
 }
+=cut
 
 1;
