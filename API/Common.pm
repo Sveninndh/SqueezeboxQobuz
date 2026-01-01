@@ -1,5 +1,4 @@
-
-#Sven 2024-11-06 enhancements version 30.6.6
+#Sven 2025-12-23 enhancements version 30.6.6
 # 2025-09-16 v30.6.2 - _precacheAlbum
 # 2025-10-16 - _precacheAlbum - albums of the week
 
@@ -40,6 +39,7 @@ my $prefs = preferences('plugin.qobuz');
 my $log = logger('plugin.qobuz');
 my $isClassique;
 my %genreList;
+my $user_Id; # is only not undef if a valid user_id becomes sent through material-skin
 
 initGenreMap();
 
@@ -69,8 +69,28 @@ sub getAccountList {
 	} values %{ $prefs->get('accounts') } ];
 }
 
-sub hasAccount {
-	return scalar @{ getAccountList() } ? 1 : 0;
+sub getAccountCount {
+	my ($class, $params) = @_;
+
+	my $accounts = getAccountList();
+	my $count    = scalar @$accounts;
+
+	if ( $count > 0) {
+		if (ref $params && exists $params->{user_id} ) {
+			my $userId = $params->{user_id};
+
+			$user_Id = undef;
+			foreach ( @$accounts ) { 
+				if ( $_->[1] eq $userId || $_->[0] eq $userId ) { $user_Id = $_->[1]; last; }
+			}
+		}
+	}
+
+	return $count;
+}
+
+sub hasValidUserId {
+	return ( defined $user_Id );
 }
 
 sub getAccountData {
@@ -78,10 +98,13 @@ sub getAccountData {
 
 	my $accounts = $prefs->get('accounts') || return;
 
-	my $userId = ref $clientOrUserId
-		? $prefs->client($clientOrUserId)->get('userId')
-		: $clientOrUserId;
+	my $userId;
 
+	if (defined $user_Id) { $userId = $user_Id; }
+	else { 
+		$userId = ref $clientOrUserId ? $prefs->client($clientOrUserId)->get('userId') : $clientOrUserId;
+	}
+	
 	return $accounts->{$userId};
 }
 

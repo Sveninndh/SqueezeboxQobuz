@@ -43,6 +43,8 @@ sub handler {
 
 	my $accounts = $prefs->get('accounts');
 
+	$log->error(Data::Dump::dump(keys %$params));
+
 	if ( $deleteId ) {
 		delete $accounts->{$deleteId};
 		$prefs->set('accounts', $accounts);

@@ -64,17 +64,26 @@ sub new {
 	if (!$args->{client} && !$args->{userId}) {
 		return;
 	}
-
+	
 	my $client = $args->{client};
+
+	#$log->error(Data::Dump::dump($client->controllerUA()));
+	#$log->error(Data::Dump::dump($args->{client}));
+
 	my $userId = $args->{userId} || $prefs->client($client)->get('userId') || return;
 
+	#$log->error(Data::Dump::dump($userId));
+
 	if (my $apiClient = $apiClients{$userId}) {
+		#$log->error(Data::Dump::dump($apiClient));
 		return $apiClient;
 	}
 
 	my $self = $apiClients{$userId} = $class->SUPER::new();
 	$self->client($client);
 	$self->userId($userId);
+
+	#$log->error(Data::Dump::dump($self));
 
 	# update our profile ASAP
 	$self->updateUserdata();
@@ -806,9 +815,9 @@ sub _lookupArtistPicture {
 
 # Sven 2025-10-25 - Anpassung des Caching an die neue API Methoden ab 2025. Siehe ab Zeile 840
 # Offenbar soll ein Album ('album/get?album_id=xxxxxxxx') welche nicht abspielbar ist nicht gecached werden.
-# Dies wird geprüft indem zuerst geprüft wird. ob es den Parameter 'album_id' gibt.
+# Dies wird geprüft indem zuerst geprüft wird, ob es den Parameter 'album_id' gibt.
 # Alle Kommandos die 'album_id' nicht enthalten werden immer gecached.
-# Wenn 'album_id' vorhanden ist wird geprüft ob das Album 'release_date_stream' enthält und ob dessen Wert kleiner als der des Tagesdatums ist.
+# Wenn 'album_id' vorhanden ist wird geprüft, ob das Album 'release_date_stream' enthält und ob dessen Wert kleiner als der des Tagesdatums ist.
 # Es wird also geprüft ob das Album gestream werden kann, in dem Fall wird es gecached.
 # Das Problem hieran ist, dass das mit der alten API so funktionierte weil es nur eine Methode 'album/get' die einen Parameter 'album_id' hatte.
 # In den neueren Versionen der API gibt es mehrer Methoden die ebenfalls den Parameter 'album_id' haben, die aber gänzlich andere Datenformate zurückliefern.

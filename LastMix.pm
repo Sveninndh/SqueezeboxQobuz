@@ -16,7 +16,7 @@ sub isEnabled {
 	return unless Slim::Utils::PluginManager->isEnabled('Plugins::Qobuz::Plugin');
 
 	require Plugins::Qobuz::API::Common;
-	return Plugins::Qobuz::API::Common->hasAccount() ? 'Qobuz' : undef;
+	return Plugins::Qobuz::API::Common->getAccountCount() ? 'Qobuz' : undef;
 }
 
 sub lookup {

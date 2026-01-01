@@ -1078,3 +1078,5 @@ PLUGIN_QOBUZ_ALBUMLIST_EMPTY
 	NL	De albumlijst is leeg! De lijst 'Release Radar' is bijvoorbeeld leeg als er geen artiesten in de favorieten staan.
 	ES	¡La lista de álbumes está vacía! Por ejemplo, la lista 'Release Radar' está vacía si no hay artistas en tus favoritos.
 
+PLUGIN_QOBUZ_ID
+	EN	ID

@@ -128,6 +128,7 @@ $prefs->migrate(1,
 		}
 
 		$prefs->remove('token', 'userdata', 'userinfo', 'username');
+		
 		1;
 	}
 );
@@ -302,7 +303,11 @@ sub playerMenu {}
 sub handleFeed {
 	my ($client, $cb, $args) = @_;
 
-	if ( !Plugins::Qobuz::API::Common->hasAccount() ) {
+	my $params = $args->{params};
+
+	my $accountCount = Plugins::Qobuz::API::Common->getAccountCount($params);
+
+	if ( $accountCount < 1 ) {
 		return $cb->({
 			items => [{
 				name => cstring($client, 'PLUGIN_QOBUZ_REQUIRES_CREDENTIALS'),
@@ -310,8 +315,6 @@ sub handleFeed {
 			}]
 		});
 	}
-
-	my $params = $args->{params};
 
 	my $items = [{
 		name  => cstring($client, 'SEARCH'),
@@ -432,10 +435,9 @@ sub handleFeed {
 		image => 'html/images/albums.png'
 	} if ($prefs->get('showUserPurchases'));
 	
-	if ($client && scalar @{ Plugins::Qobuz::API::Common::getAccountList() } > 1) {
-		my $account = Plugins::Qobuz::API::Common->getAccountData($client);
+	if ($accountCount > 1 && ! Plugins::Qobuz::API::Common::hasValidUserId()) {
 		push @$items, {
-			name => cstring($client, 'PLUGIN_QOBUZ_ACCOUNT') . ': ' . $account->{userdata}->{display_name}, #Sven 2025-12-14
+			name => cstring($client, 'PLUGIN_QOBUZ_SELECT_ACCOUNT'),
 			image => __PACKAGE__->_pluginDataFor('icon'),
 			url => \&QobuzSelectAccount,
 		};
@@ -449,9 +451,12 @@ sub handleFeed {
 sub QobuzSelectAccount {
 	my $cb = $_[1];
 
+	my $account = Plugins::Qobuz::API::Common->getAccountData($_[0]);
+	my $name    = $account->{userdata}->{display_name};
+
 	my $items = [ map {
 		{
-			name => $_->[0],
+			name => ($_->[0] eq $name) ? '(' . $name . ')' : $_->[0],
 			url => sub {
 				my ($client, $cb2, $params, $args) = @_;
 
