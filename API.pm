@@ -1,6 +1,6 @@
 package Plugins::Qobuz::API;
 
-#Sven 2024-12-28 enhancements version 30.6.6.5
+#Sven 2024-12-30 enhancements version 30.6.6.6
 # All changes are marked with "#Sven" in source code
 # 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
 # 2022-05-13 added function setFavorite()
@@ -205,7 +205,7 @@ sub search {
 	else { $self->_get('catalog/search', $getCB, $args); }
 }
 
-#Sven 2025-10-16, 2025-12-28
+#Sven 2025-10-16, 2025-12-30
 sub getRadio {
 	my ($self, $cb, $args) = @_;
 	
@@ -214,17 +214,25 @@ sub getRadio {
 	$args->{limit}      = 50;
 	$args->{_ttl}       = QOBUZ_EDITORIAL_EXPIRY;
 	$args->{_use_token} = 1;
-	$args->{_cid}       = 1;
+	$args->{_cid}       = 1; # muss immer angegeben werden wenn das webToken benutzt werden soll, da es ohne Angabe immer _cid => 0 angenommen wird.
 	
 	$self->_get('radio/' . $type, sub {
 		my $radio = shift;
 
-		#$radio->{tracks}->{items} = _precacheTracks($radio->{tracks}->{items}) if (exists $radio->{tracks}->{items});
-		#$cb->($radio);
+#		$radio->{tracks}->{items} = _precacheTracks($radio->{tracks}->{items}) if (exists $radio->{tracks}->{items});
+#		$cb->($radio);
 
 		#Sven 2025-12-28 Die $radio->{tracks}->{items} enthalten keine ReplayGain-Informationen
 		#Daher werden diese Informationen mit _post('track/getList') noch separat geholt.
-		my $trackIds = { data => to_json({ tracks_id => [ map { $_->{id} } @{$radio->{tracks}->{items}} ] }) };
+		#Dabei werden zwei API-Aufrufe verschachtelt, beim zweiten Aufruf wird user_auth_token direkt aus dem ersten $self->get() übernommen.
+		#_get() oder _post() berechnen _use_token = 1 ist den korrekten user_auth_token und speichern in als HASH-Wert in $args ab.
+		#Dort kann er dann ohne Neuberechnung für die folgenden API-Aufrufe direkt übernommen werden.
+		#Das Problem war, dass $self in	dem zeiten API-Call sich veränderte und plötzlich eine zur Klasse "Plugins::Qobuz::API" gehörte.
+		#$self war jetzt plötzlich ein Attribut von "Plugins::Qobuz::API". Das bewirkt da zum Beispiel Plugins::Qobuz::API::Common->getToken($self); fehl schlägt.
+		#Warum sich hier $self derart verändert und was es Material zu tun hat, weiß ich nicht. Material 6.1.1 zeigt diesen fehler während die aktuelle Developer Version diesen Fehler nicht zeigt.
+		#Es kann daher, muss aber nicht an Material liegen.
+
+		my $trackIds = to_json({ tracks_id => [ map { $_->{id} } @{$radio->{tracks}->{items}} ] });
 
 		$self->_post('track/getList', sub {
 			my $result = shift;
@@ -232,7 +240,7 @@ sub getRadio {
 			$radio->{tracks}->{items} = _precacheTracks($result->{tracks}->{items});
 			
 			$cb->($radio);
-		}, $trackIds);
+		}, { _cid => 1, user_auth_token => $args->{user_auth_token}, data => $trackIds });
 
 		
 	}, $args);
@@ -1093,47 +1101,52 @@ sub _pagingGetMore {
 sub _post {
 	my ( $self, $url, $cb, $params ) = @_;
 
-	# need to get a token first?
-	my $token = '';
+	$params ||= {};
 
-	if (blessed $self) { 
-		$token = ($params->{_cid} || 0)
-			? Plugins::Qobuz::API::Common->getWebToken($self)
-			: Plugins::Qobuz::API::Common->getToken($self);
-		if ( !$token ) {
-			$log->error('No or invalid user session');
-			$cb->() if $cb;
-			return;
+	if ( delete $params->{_use_token} || ! $params->{user_auth_token} ) {
+		# need to get a token first?
+		if (blessed $self) { 
+			$params->{user_auth_token} = ($params->{_cid} || 0)
+				? Plugins::Qobuz::API::Common->getWebToken($self)
+				: Plugins::Qobuz::API::Common->getToken($self);
+			if ( ! $params->{user_auth_token} ) {
+				$log->error('No or invalid user session');
+				$cb->() if $cb;
+				return;
+			}
 		}
 	}
 
-	$params->{user_auth_token} = $token if delete $params->{_use_token};
+	my $appId = (delete $params->{_cid} ? $cid : $aid);
 
-	$params ||= {};
+	$url = QOBUZ_BASE_URL . $url;
 
-	my $appId = (delete $params->{_cid} && $cid) || $aid;
-	my $body  = $params->{data};
+	$url .= '?app_id=' . $appId if $appId;
+	$url .= '&user_auth_token=' . $params->{user_auth_token} if $params->{user_auth_token};
 
-	$url = QOBUZ_BASE_URL . $url; 
+	main::INFOLOG && $log->is_info && $log->info("$url " . $params->{data});
 
-	$body .= '&app_id=' . $appId if $params->{_appId};
-	$body .= '&user_auth_token=' . $params->{user_auth_token} if $params->{user_auth_token};
-	
-	main::INFOLOG && $log->is_info && $log->info("$url: " . $body);
+	#$log->error("$url " . $params->{data});
 
 	my %headers = (
-		'Content-Type' => 'application/json', # 'application/x-www-form-urlencoded',
-		'X-User-Auth-Token' => $token,
-		'X-App-Id' => $appId,
-	);
+		'Content-Type' => 'application/json', # 'application/x-www-form-urlencoded'
+		'X-App-Id' => $appId
+	); 
+
+	$headers{'Content-Type'} = $params->{_ContentType} if $params->{_ContentType};
+	$headers{'X-User-Auth-Token'} = $params->{user_auth_token} if $params->{user_auth_token};
 
 	$headers{'User-Agent'} = ($prefs->get('useragent') || BROWSER_UA) if $appId == $cid;
+
+	#$log->error("header: " . Data::Dump::dump(\%headers));
 
 	Slim::Networking::SimpleAsyncHTTP->new(
 		sub {
 			my $response = shift;
 
 			my $result = eval { from_json($response->content) };
+
+			#$log->error(Data::Dump::dump($result));
 
 			$@ && $log->error($@);
 			main::DEBUGLOG && $log->is_debug && $log->debug("got $url: " . Data::Dump::dump($result));
@@ -1149,7 +1162,7 @@ sub _post {
 		{
 			timeout => 15,
 		},
-	)->post($url, %headers, $body);
+	)->post($url, %headers, $params->{data});
 }
 
 sub aid { $aid }

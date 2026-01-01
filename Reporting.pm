@@ -1,4 +1,4 @@
-#Sven 2024-11-05 enhancements version 30.6.6
+#Sven 2024-12-30 enhancements version 30.6.6
 #Sven 2025-10-29 - startStreaming() uses now function _post()
 #Sven 2025-10-29 - endStreaming() uses now function _post(), endStreaming() is currently only sent when the next track starts playing. That's probably not how Qobuz intended it to work.
 package Plugins::Qobuz::Reporting;
@@ -77,7 +77,7 @@ sub startStreaming {
 			$event->{duration} = $duration || 0;
 			$client->pluginData( streamingEvent => $event );
 			$cb->(@_) if $cb;
-		}, { data => 'event=[' . to_json($event) . ']' });
+		}, { _contentType => 'application/x-www-form-urlencoded', data => 'event=[' . to_json($event) . ']' });
 	});
 }
 

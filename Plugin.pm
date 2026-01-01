@@ -1,5 +1,5 @@
 =head Infos
-Sven 2025-12-28 enhancements based on version 1.400 up to 3.6.6.5
+Sven 2025-12-30 enhancements based on version 1.400 up to 3.6.6.6
 
 This program is free software; you can redistribute it and/or label
 modify it under the terms of the GNU General Public License, version 2.
@@ -35,8 +35,9 @@ modify it under the terms of the GNU General Public License, version 2.
 24. added a list of all awards.
 25. added new awards page and labels page, awards and labels page are used now in the album page
 26. added new setting album view
-27. addes new search
-28. Consideration of has_more in releases on the artist page
+27. added new enhanced search 2025-12-28
+28. Consideration of has_more in releases on the artist page 2025-12-28
+29. added new search to global search 2025-12-29
 
 all changes are marked with "#Sven" in source code
 changed files: Common.pm, API.pm, Plugin.pm, ProtocolHandler.pm, Settings.pm, strings.txt and basic.html from .../Qobuz/HTML/EN/plugins/Qobuz/settings/basic.html
@@ -190,19 +191,27 @@ sub initPlugin {
 	) );
 
 	Slim::Menu::GlobalSearch->registerInfoProvider( qobuz => ( # qobuzSearch => (
-		func => \&searchMenu
-	) );
+		after => 'top',
+		func  => sub { #Sven 2025-12-29 
+			my ( $client, $tags ) = @_;
 
-#	Slim::Menu::GlobalSearch->registerInfoProvider( qobuz => ( # qobuzSearch => (
-#		func => sub {
-#			my ( $client, $tags ) = @_;
-#
-#			return {
-#				name  => cstring($client, Plugins::Spotty::Plugin::getDisplayName()),
-#				items => [ map { delete $_->{image}; $_ } @{_searchItems($client, $tags->{search})} ],
-#			};
-#		},
-#	) );
+			my $menuItems;
+
+			QobuzSearch($client, sub{ my $result = shift; $menuItems =  $result->{items}; }, $tags);
+
+			return {
+					name  => cstring($client, getDisplayName()),
+					image => 'html/images/search.png',
+					items => $menuItems,
+#					items => [{
+#						name  => cstring($client, 'PLUGIN_QOBUZ_SEARCH', '', $tags->{search}),
+#						image => 'html/images/search.png',
+#						url   => \&QobuzSearch,
+#						passthrough => [{ q => $tags->{search} }],
+#					}],
+			};
+		},
+	) );
 
 	#Sven 2022-05-10 
 	Slim::Menu::PlaylistInfo->registerInfoProvider( qobuz => ( # qobuzPlaylistInfo => (
@@ -918,6 +927,9 @@ sub QobuzAlbums {
 sub QobuzSearch {
 	my ($client, $cb, $params, $args) = @_;
 
+	#$log->error(Data::Dump::dump($params));
+	#$log->error(Data::Dump::dump($args));
+
 	$args ||= {};
 	$params->{search} ||= $args->{q};
 	my $type   = lc($args->{type} || '');
@@ -949,7 +961,7 @@ sub QobuzSearch {
 			push @$items, {
 				name  => cstring($client, 'ARTISTS') . " ($count/$total)",
 				image => 'html/images/artists.png',
-				type => 'header',
+				type => 'header', 
 				url  => \&QobuzSearch,
 				passthrough => [{ q => $search, type => 'artists' }]
 			};
@@ -3071,65 +3083,6 @@ sub _getGoodiesCLI {
 
 	$request->setStatusDone();
 }
-
-#Sven 2025-12-27
-sub searchMenu {
-	my ( $client, $tags ) = @_;
-
-	my $searchParam = $tags->{search};
-
-	return {
-		items => [{
-			name => cstring($client, 'SEARCH') . ' - ' . getDisplayName(),
-			url   => \&QobuzSearch,
-			#type  => 'search', #Sven - view type
-			image => 'html/images/search.png',
-			passthrough => [{ q => $searchParam }],
-		}]
-	};
-}
-#	return {
-#		name => cstring($client, 'SEARCH') . ' - ' . getDisplayName(),
-#		items => [{
-#			#name  => $prefs->get('groupReleases') ? cstring($client, 'PLUGIN_QOBUZ_RELEASES') : cstring($client, 'ALBUMS'),
-#			name  => cstring($client, 'PLUGIN_QOBUZ_RELEASES'),
-#			url   => \&QobuzSearch,
-#			type  => 'albums', #Sven - view type
-#			image => 'html/images/albums.png',
-#			passthrough => [{
-#				q        => $searchParam,
-#				type     => 'albums',
-#			}],
-#		},{
-#			name  => cstring($client, 'ARTISTS'),
-#			url   => \&QobuzSearch,
-#			type  => 'artists', #Sven - view type
-#			image => 'html/images/artists.png',
-#			passthrough => [{
-#				q        => $searchParam,
-#				type     => 'artists',
-#			}],
-#		},{
-#			name  => cstring($client, 'SONGS'),
-#			url   => \&QobuzSearch,
-#			type  => 'playlist', #Sven - view type
-#			image => 'html/images/playlists.png',
-#			passthrough => [{
-#				q        => $searchParam,
-#				type     => 'tracks',
-#			}],
-#		},{
-#			name  => cstring($client, 'PLAYLISTS'),
-#			url   => \&QobuzSearch,
-#			type  => 'playlists', #Sven - view type
-#			image => 'html/images/playlists.png',
-#			passthrough => [{
-#				q        => $searchParam,
-#				type     => 'playlists',
-#			}],
-#		}]
-#	};
-#}
 
 #Sven 2025-10-25 - New cli command to get show an album or van radio
 sub cliQobuzCommand {

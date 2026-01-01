@@ -1,4 +1,4 @@
-#Sven 2025-12-28 enhancements version 30.6.6.5
+#Sven 2025-12-30 enhancements version 30.6.6.5
 # 2025-09-16 v30.6.2 - _precacheAlbum
 # 2025-10-16 - _precacheAlbum - albums of the week
 # 2025-12-23 enhancements for managing users, if Material sends "user_id:xxx"
@@ -80,7 +80,7 @@ sub getAccountCount {
 	my $count    = scalar @$accounts;
 
 	if ( $count > 0) {
-		if (ref $params && exists $params->{user_id} ) {
+		if (defined $params && exists $params->{user_id} ) {
 			my $userId = $params->{user_id};
 
 			$user_Id = undef;
