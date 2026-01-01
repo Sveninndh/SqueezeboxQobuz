@@ -784,3 +784,44 @@ PLUGIN_QOBUZ_ALBUMS_OF_THE_WEEK
 	NL	Albums van de week
 	ES	Álbumes de la semana
 
+PLUGIN_QOBUZ_RELEASE_RADAR
+	DE	Release-Radar
+	EN	Release radar
+	FR	Release radar
+	NL	Release radar
+	ES	Release radar
+
+PLUGIN_QOBUZ_RADIO
+	DE	Radio
+	EN	Radio
+	FR	Radio
+	NL	Radio
+	ES	Radio
+
+PLUGIN_QOBUZ_RADIO_ALBUM
+	DE	Radio vom Album
+	EN	Radio from the album
+	FR	Radio de l'album
+	NL	Radio van het album
+	ES	Radio del album
+
+PLUGIN_QOBUZ_RADIO_ARTIST
+	DE	Radio vom Interpreten
+	EN	Radio from the artist
+	FR	Radio de l'artiste
+	NL	Radio van de artiest
+	ES	Radio del artista
+
+PLUGIN_QOBUZ_RADIO_TRACK
+	DE	Radio vom Titel
+	EN	Radio from the title
+	FR	Radio du titre
+	NL	Radio uit de titel
+	ES	Radio del título
+
+PLUGIN_QOBUZ_SUGGEST
+	DE	Vorschläge
+	EN	Suggestions
+	FR	Suggestions
+	NL	Suggesties
+	ES	Sugerencias

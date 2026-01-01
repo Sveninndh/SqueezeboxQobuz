@@ -1,12 +1,12 @@
 
-#Sven 2024-10-15 enhancements version 30.6.3
+#Sven 2024-10-16 enhancements version 30.6.3
 # 2025-09-16 v30.6.2 - _precacheAlbum
-# 2025-10-15 - _precacheAlbum - albums of the week
+# 2025-10-16 - _precacheAlbum - albums of the week
 package Plugins::Qobuz::API::Common;
 
 use strict;
 use Exporter::Lite;
-use Time::Local qw( timelocal ); #Sven 2025-10-15 - albums of the week
+use Time::Local qw( timelocal ); #Sven 2025-10-15 - _date2time()
 
 our @EXPORT = qw(
 	QOBUZ_BASE_URL QOBUZ_DEFAULT_EXPIRY QOBUZ_USER_DATA_EXPIRY QOBUZ_EDITORIAL_EXPIRY QOBUZ_DEFAULT_LIMIT QOBUZ_LIMIT QOBUZ_USERDATA_LIMIT
@@ -133,48 +133,56 @@ sub username {
 	$class->getUserdata($clientOrUserId, 'login');
 }
 
+#Sven 2025-10-16 v30.6.3 
 sub filterPlayables {
-	my ($class, $items) = @_;
+	my ($class, $items, $isEnhApi) = @_;
 
 	return $items if $prefs->get('playSamples');
-
-	return [ grep {
-		!$_->{released_at} || $_->{streamable};  # allow all tracks and streamable albums
-	} @$items ];
+	
+	if (defined $isEnhApi && $isEnhApi) {
+		return [ grep {
+			$_->{rights}->{streamable};  # allow all tracks and streamable albums
+		} @$items ];
+	}
+	else {
+		return [ grep {
+			!$_->{released_at} || $_->{streamable};  # allow all tracks and streamable albums
+		} @$items ];
+	}	
 }
 
-#Sven 2025-09-16, 2025-10-15 v30.6.2 
+#Sven 2025-09-16, 2025-10-16 v30.6.3 
 sub _precacheAlbum {
 	my ($albums) = @_;
 
-	return unless $albums && ref $albums eq 'ARRAY';
+	return unless ($albums && ref $albums eq 'ARRAY' && scalar @$albums); #Sven 2025-10-24;
 	
 	my $album = @$albums[0];
-	my $isDefault = (defined $album->{released_at}); #Sven 2025-10-15 - albums of the week
+	my $isEnhApi = (exists $album->{track_count}); #Sven 2025-10-15 - meta format of new enhanced API command
 
-	$albums = __PACKAGE__->filterPlayables($albums) if $isDefault; #Sven 2025-10-15 - albums of the week
+	$albums = __PACKAGE__->filterPlayables($albums, $isEnhApi);
 
 	foreach $album (@$albums) {
-		foreach (qw(composer articles article_ids catchline
-			# maximum_bit_depth maximum_channel_count maximum_sampling_rate maximum_technical_specifications
-			popularity previewable qobuz_id sampleable slug streamable_at subtitle created_at
-			product_type product_url purchasable purchasable_at relative_url release_date_download release_date_original
-			product_sales_factors_monthly product_sales_factors_weekly product_sales_factors_yearly))
-		{
-			delete $album->{$_};
-		}
 		$album->{genrePath} = $album->{genre}->{path}; #Sven 2025-09-16 used for genre filter
 		$album->{genre} = $album->{genre}->{name};
 		$album->{image} = __PACKAGE__->getImageFromImagesHash($album->{image}) || '';
-		unless ($isDefault) { #Sven 2025-10-15 - albums of the week
+		unless ($isEnhApi) { 
+			foreach (qw(composer articles article_ids catchline
+				# maximum_bit_depth maximum_channel_count maximum_sampling_rate maximum_technical_specifications
+				popularity previewable qobuz_id sampleable slug streamable_at subtitle created_at
+				product_type product_url purchasable purchasable_at relative_url release_date_download release_date_original
+				product_sales_factors_monthly product_sales_factors_weekly product_sales_factors_yearly))
+				{ delete $album->{$_}; }
+		} 
+		else { #Sven 2025-10-15 - album meta format of new enhanced API command
 			$album->{artist} = @{$album->{artists}}[0];
 			$album->{tracks_count} = $album->{track_count};
-			delete $album->{track_count};
 			$album->{released_at} = _date2time($album->{dates}->{original});
+			$album->{release_date_stream} = $album->{dates}->{stream};
 			$album->{hires_streamable} = $album->{rights}->{hires_streamable};
 			$album->{streamable} = $album->{rights}->{streamable};
-			delete $album->{rights};
-			delete $album->{dates};
+			foreach (qw(audio_info articles dates rights track_count)) 
+				{ delete $album->{$_}; }
 		}
 
 		# If the user pref is for classical music enhancements to the display, is this a classical release or has the user added the genre to their custom classical list?
@@ -207,7 +215,7 @@ sub _precacheAlbum {
 		_precacheTracks([ map {
 			$_->{album} = $albumInfo;
 			$_;
-		} @{$album->{tracks}->{items}} ]) if $isDefault; #Sven 2025-10-15 - albums of the week
+		} @{$album->{tracks}->{items}} ]) if (defined $album->{tracks}->{items}); #Sven 2025-10-17 
 
 		if (defined $albumInfo->{replay_gain}) {
 			$album->{replay_gain} = $albumInfo->{replay_gain};
@@ -230,29 +238,46 @@ sub _precacheAlbum {
 	return $albums;
 }
 
-#Sven 2025-10-15 - albums of the week
+#Sven 2025-10-24 
 sub _date2time { # "YYYY-MM-DD"
 	my ($date) = @_;
 	
 	my ($year, $month, $day) = split /-/, $date;
 	
 	# Create Unix time (Seconds sinse 1970-01-01 00:00:00 UTC)
-	return timelocal(0, 0, 0, $day, $month - 1, $year - 1900); # UTC
+	timelocal(0, 0, 0, $day, $month - 1, $year); # In der aktuellen Perl Version darf nicht 1900 von $year abgezogen werden
 }
 
+##Sven 2025-10-23
 sub _precacheTracks {
 	my ($tracks) = @_;
 
-	return unless $tracks && ref $tracks eq 'ARRAY';
+	return unless ($tracks && ref $tracks eq 'ARRAY' && scalar @$tracks); #Sven 2025-10-24
+	
+	my $isEnhApi = (exists @$tracks[0]->{rights}); #Sven 2025-10-23 - meta format of new enhanced API command
 
-	$tracks = __PACKAGE__->filterPlayables($tracks);
+	$tracks = __PACKAGE__->filterPlayables($tracks, $isEnhApi);
 
 	foreach my $track (@$tracks) {
-		foreach (qw(article_ids copyright downloadable isrc previewable purchasable purchasable_at)) {
-			delete $track->{$_};
+		if ($isEnhApi) { #Sven 2025-10-23 - track meta format of the new enhanced API commands
+			my $artist = @{$track->{artists}}[0];
+			$track->{album}->{artist} = $artist;
+			$track->{artist} = $artist->{name};
+			$track->{artistId} = $artist->{id};
+			$track->{track_number} = $track->{physical_support}->{track_number};
+			$track->{media_number} = $track->{physical_support}->{media_number};
+			$track->{hires_streamable} = $track->{rights}->{hires_streamable};
+			$track->{streamable} = $track->{rights}->{streamable};
+			foreach (qw(artists physical_support rights)) { #Sven 2025-10-24 
+				delete $track->{$_};
+			}
 		}
-
-		precacheTrack($track)
+		else { #Sven 2025-10-24
+			foreach (qw(article_ids copyright downloadable isrc previewable purchasable purchasable_at)) {  
+				delete $track->{$_};
+			}
+		}
+		precacheTrack($track);
 	}
 
 	return $tracks;
@@ -278,7 +303,7 @@ sub precacheTrack {
 		push @$artistNames, $track->{performer}->{name};
 		push @$artistIds, $track->{performer}->{id};
 	}
-
+	
 	my $meta = {
 		title    => $track->{title} || $track->{id},
 		album    => $album->{title} || '',
@@ -326,7 +351,7 @@ sub precacheTrack {
 	$album->{duration} += $meta->{duration};
 	main::DEBUGLOG && $log->is_debug && $log->debug("Track $meta->{title} precached");
 	$cache->set('trackInfo_' . $track->{id}, $meta, ($meta->{duration} ? QOBUZ_DEFAULT_EXPIRY : QOBUZ_EDITORIAL_EXPIRY));
-
+	
 	return $meta;
 }
 

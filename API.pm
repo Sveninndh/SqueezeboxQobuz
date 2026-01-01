@@ -1,6 +1,6 @@
 package Plugins::Qobuz::API;
 
-#Sven 2024-10-15 enhancements version 30.6.3
+#Sven 2024-10-21 enhancements version 30.6.3
 # All changes are marked with "#Sven" in source code
 # 2020-03-30 getArtist() new parameter $noalbums, if it is not undef, getArtist() returns no extra album information
 # 2022-05-13 added function setFavorite()
@@ -14,8 +14,9 @@ package Plugins::Qobuz::API;
 # 2023-10-07 Update of app_id handling
 # 2023-10-09 add sort configuration for function getUserPlaylists()
 # 2024-03-01 _pagingGet() optimisations, no limitations for albums, artists, tracks, playlists and search
-# 2025-10-15 getDiscover() used for 'albums of the week'
+# 2025-10-21 getAlbums() used for 'albums of the week' and 'release radar'
 
+# $log->error(Data::Dump::dump($albums));
 use strict;
 use base qw(Slim::Utils::Accessor);
 
@@ -40,7 +41,7 @@ use constant BROWSER_UA => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Appl
 # bump the second parameter if you decide to change the schema of cached data
 my $cache = Plugins::Qobuz::API::Common->getCache();
 my $prefs = preferences('plugin.qobuz');
-my $log = logger('plugin.qobuz');
+my $log = logger('plugin.qobuz'); 
 
 my %apiClients;
 
@@ -162,7 +163,7 @@ sub getMyWeekly {
 		
 		$myWeekly->{tracks}->{items} = _precacheTracks($myWeekly->{tracks}->{items} || []) if $myWeekly->{tracks};
 
-		$cb->($myWeekly);
+		$cb->($myWeekly) if $cb;
 	}, {
 		type        => 'weekly',
 		limit       => 50,
@@ -170,6 +171,27 @@ sub getMyWeekly {
 		_use_token  => 1,
 		_cid        => 1,
 	}, 'tracks');
+}
+
+sub getRadio {
+	my ($self, $cb, $args) = @_;
+	
+	my $type = ($args->{album_id}) ? 'album' : (($args->{artist_id}) ? 'artist' : 'track');
+	
+	$args->{limit}      = 50;
+	$args->{_ttl}       = QOBUZ_EDITORIAL_EXPIRY;
+	$args->{_use_token} = 1;
+	$args->{_cid}       = 1;
+	
+	#$log->error(Data::Dump::dump({ type => $type, args => $args }));
+	
+	$self->_get('radio/' . $type, sub {
+		my $radio = shift;
+		
+		$radio->{tracks}->{items} = _precacheTracks($radio->{tracks}->{items}) if (exists $radio->{tracks}->{items});
+		#$log->error(Data::Dump::dump($radio));
+		$cb->($radio);
+	}, $args);
 }
 
 sub search {
@@ -206,7 +228,7 @@ sub search {
 
 		$cache->set($key, $results, 300);
 
-		$cb->($results);
+		$cb->($results) if $cb;
 	};
 
 	if ($type) { $self->_pagingGet('catalog/search', $getCB, $args, $type); }
@@ -241,11 +263,11 @@ sub getLabel {
 	my ($self, $cb, $labelId) = @_;
 
 	$self->_pagingGet('label/get', sub {
-		my $results = shift;
+		my $albums = shift;
 
-		$results->{albums}->{items} = _precacheAlbum($results->{albums}->{items}) if $results->{albums};
+		$albums->{albums}->{items} = _precacheAlbum($albums->{albums}->{items}) if $albums->{albums};
 
-		$cb->($results) if $cb;
+		$cb->($albums) if $cb;
 	}, {
 		label_id => $labelId,
 		extra     => 'albums',
@@ -291,16 +313,15 @@ sub getGenres {
 #Sven 2022-05-23 neuer Parameter 'extra' und eine Optimierung
 sub getAlbum {
 	my ($self, $cb, $args) = @_;
-	#$args enthält entweder direkt die album_id oder ein Array
-	#mit den Hashwerten album_id und extra
-	#album_id => $albumId,
-	#extra    => 'albumsFromSameArtist', 'focus','focusAll',
+	# $args enthält entweder direkt die album_id oder ein Array
+	# mit den Hashwerten 'album_id' und optional 'extra'
+	# album_id => $albumId,
+	# extra    => 'albumsFromSameArtist', 'focus','focusAll',
 
-	
 	if (! ref $args) { $args = { album_id => $args }; };
-
-	#$self->_pagingGet('album/get', sub { #Wozu Paging bei den Track eines einzigen Albums?????
-	#Funktioniert mit meiner Version von Plugin:QobuzGetTracks() nicht
+	
+	# $self->_pagingGet('album/get', sub { # Wozu Paging bei den Tracks eines einzigen Albums?????
+	# Funktioniert mit meiner Version von Plugin:QobuzGetTracks() nicht
 	$self->_get('album/get', sub {
 		my $album = shift;
 		
@@ -327,32 +348,31 @@ sub getFeaturedAlbums {
 	};
 
 	$args->{genre_ids} = $genreId if $genreId;
-
+	
 	$self->_pagingGet('album/getFeatured', sub {
 		my $albums = shift;
 		
 		$albums->{albums}->{items} = _precacheAlbum($albums->{albums}->{items}) if $albums->{albums};
+		
 		$cb->($albums);
 	}, $args, 'albums');
 }
 
-#Sven 2025-10-15 - albums of the week
-sub getDiscover {
-	my ($self, $cb, $type, $genreId) = @_;
+#Sven 2025-10-21 - the get command is in $pars->{cmd}
+sub getCmdAlbums {
+	my ($self, $cb, $pars) = @_;
+	
+	my $args = $pars->{args};
+	
+	$args->{_ttl}       = QOBUZ_EDITORIAL_EXPIRY;
+	$args->{_use_token} = 1;
+	$args->{_cid}       = 1;
 
-	my $args = {
-		limit    => QOBUZ_USERDATA_LIMIT,
-		_ttl     => QOBUZ_EDITORIAL_EXPIRY,
-		_use_token  => 1,
-		_cid        => 1,
-	};
-
-	$args->{genre_ids} = $genreId if $genreId;
-
-	$self->_pagingGet('discover/' . $type, sub {
+	$self->_pagingGetMore($pars->{cmd}, sub {
 		my $albums = shift;
 		
-		$albums->{items} = _precacheAlbum($albums->{items}) if $albums;
+		$albums->{albums}->{items} = _precacheAlbum($albums->{albums}->{items});
+
 		$cb->($albums);
 	}, $args, 'albums');
 }
@@ -416,7 +436,7 @@ sub getUserFavorites {
 
 		$favorites->{albums}->{items} = _precacheAlbum($favorites->{albums}->{items})  if $favorites->{albums};
 		$favorites->{tracks}->{items} = _precacheTracks($favorites->{tracks}->{items}) if $favorites->{tracks};
-		#$log->error(Data::Dump::dump($favorites));
+
 		$cb->($favorites);
 	}, {
 		limit => QOBUZ_USERDATA_LIMIT,
@@ -717,6 +737,19 @@ sub _lookupArtistPicture {
 	}
 }
 
+# Sven 2025-10-25 - Anpassung des Caching an die neue API Methoden ab 2025. Siehe ab Zeile 840
+# Offenbar soll ein Album ('album/get?album_id=xxxxxxxx') welche nicht abspielbar ist nicht gecached werden.
+# Dies wird geprüft indem zuerst geprüft wird. ob es den Parameter 'album_id' gibt.
+# Alle Kommandos die 'album_id' nicht enthalten werden immer gecached.
+# Wenn 'album_id' vorhanden ist wird geprüft ob das Album 'release_date_stream' enthält und ob dessen Wert kleiner als der des Tagesdatums ist.
+# Es wird also geprüft ob das Album gestream werden kann, in dem Fall wird es gecached.
+# Das Problem hieran ist, dass das mit der alten API so funktionierte weil es nur eine Methode 'album/get' die einen Parameter 'album_id' hatte.
+# In den neueren Versionen der API gibt es mehrer Methoden die ebenfalls den Parameter 'album_id' haben, die aber gänzlich andere Datenformate zurückliefern.
+# Daver muss die alte Bedingung angepasst werden, damit die neuen Methoden mit Parameter 'album_id' auch gecached werden können.
+# Das Cachen ist insofern wichtig, da bei einigen Listen ohne das Cachen merkwürdige Effekte auftreten.
+# Zum Beispiel liefert 'Vorschläge' eine Liste von Alben ausgehend von dem gerade angezeigten Album dessen ID dann in 'album_id' steht.
+# Nachdem diese Albenliste angezeigt wird und man ein Album anklickt passiert es häufig, dass ein ganz anderes Album aus der Liste angezeigt wird.
+# Nach dem Cachen ist der Effekt verschwunden, vermutlich garantiert der Qobuz Server nicht immer die gleiche Reihenfolge der Listenelemente.
 sub _get {
 	my ( $self, $url, $cb, $params ) = @_;
 
@@ -777,7 +810,7 @@ sub _get {
 	}
 
 	my $cacheKey = $url . ($params->{_user_cache} ? $self->userId : '');
-
+	
 	if ($params->{_wipecache}) {
 		$cache->remove($cacheKey);
 	}
@@ -804,8 +837,12 @@ sub _get {
 			$@ && $log->error($@);
 			main::DEBUGLOG && $log->is_debug && $url !~ /getFileUrl/i && $log->debug(Data::Dump::dump($result));
 
-			if ($result && !$params->{_nocache}) {
-				if ( !($params->{album_id}) || ( $result->{release_date_stream} && $result->{release_date_stream} lt Slim::Utils::DateTime::shortDateF(time, "%Y-%m-%d") ) ) {
+			if ($result && !$params->{_nocache}) { #Sven 2025-10-25
+				if (! ($params->{album_id}) || # Wenn 'album_id' vorhanden ist prüfen ob es von Methode 'album/get' ist.
+					! (exists $result->{release_date_stream}) || # Wenn 'release_date_stream' nicht existiert darf gecached werden.
+					$result->{release_date_stream} lt Slim::Utils::DateTime::shortDateF(time, "%Y-%m-%d") # Es ist 'album/get' und es wird geprüft ob 'release_date_stream' valide ist.
+				) { 
+					# $log->error('write cache: ' . $url);
 					$cache->set($cacheKey, $result, $params->{_ttl} || QOBUZ_DEFAULT_EXPIRY);
 				}
 			}
@@ -826,19 +863,31 @@ sub _get {
 	)->get($url, %headers);
 }
 
+
+# Da der Qobuz Server mit jedem angeforderten Request die Gesamtanzahl der Datensätze in dem Wert 'total' übermittelt,
+# kann man die Anzahl der Aufrufe vorher berechnen und diese Befehle asynchron hintereinander absenden und muss nicht warten bis der Server die Anwort schickt.
+# Da für diesen Fall nicht garantiert werden kann, dass die Antworten des Servers in der gleichen Reihenfolge zurück kommen wie die Anfragen gesendet wurden,
+# benutzt die Funktion _pagingGet() dieses etwas kompliziert anmutende Verfahren mit chunks und der Zwischenspeicherung aller Teile in 'results'. 
+# Erst wenn die letzte Anforderung vom Server beantwortet wurde wird dann der Ergebnisstring zusammengebaut.
+# Für den Lyrion Server muss am Ende eine komplette Liste bestehend aus allen angeforderten Seiten übergeben werden.
+# Ein echtes Paging wo das Holen der nächsten Seite von der Benutzeraktionen (scrollen oder sich seitenweise weiter bewegen) abhängt
+# scheint Lyrion oder das Qobuz-Plugin nicht zu unterstützen.
+# Es gibt zwei Parameter:
+# 'offset' gibt die Position an ab der gelesen wird.
+# 'limit' gibt die maximale Anzahl an Datensätzen an die eingelsen werden sollen. Fehlt der Parameter wird ein Wert von 50 angenommen.
 sub _pagingGet {
 	my ( $self, $url, $cb, $params, $type ) = @_;
 
 	return {} unless $type;
 
-	my $limitTotal = $params->{limit};
-	my $limitPage  = $params->{limit} = min($params->{limit}, QOBUZ_LIMIT);
+	my $limitTotal = $params->{limit}; # Die Anzahl der Datensätze die maximal eingelesen werden sollen.
+	my $limitPage  = $params->{limit} = min($params->{limit}, QOBUZ_LIMIT); # Die Anzahl der Datensätze pro Anforderung
 
 	$self->_get($url, sub {
 		my ($result) = @_;
 
-		my $count  = $result->{$type}->{limit} || $limitPage;
-		my $total  = $result->{$type}->{total} || $count;
+		my $count  = $result->{$type}->{limit} || $limitPage; # limit enthält immer nur den limit-Wert der bei der Anfrage mitgegeben wurde.
+		my $total  = $result->{$type}->{total} || $count;     # total enthält die Gesamtanzahl der Datensätze der Liste
 		$limitPage = $params->{limit} = $count if ( $count < $limitPage );
 
 		main::DEBUGLOG && $log->is_debug && $log->debug("Need another page? " . Data::Dump::dump({
@@ -877,7 +926,7 @@ sub _pagingGet {
 			my $results = {
 				0 => $result
 			};
-
+			
 			while (my ($id, $params) = each %$chunks) {
 				$self->_get($url, sub {
 					$results->{$id} = shift;
@@ -892,6 +941,63 @@ sub _pagingGet {
 			$cb->($result);
 		}
 	}, $params);
+}
+
+#Sven 2025-10-16 Paiging für Listen die mit 'has_more' arbeiten. Die neueren API Kommandos erhalten dieses Format zurück. 
+# Da die API-Aufrufe verschachtelt sind ist die Reihenfolge vorgegeben, deshalb ist der Aufwand mit extractorFn() hier nicht norwendig.
+# Nur wenn man mehrere asynchrone API-Aufrufe hintereinander ausführt, könnten die Ergebnisse möglicherweise nicht in der Reihenfolge eintreffen
+# in der die zugehörigen API-Aufrufe erfolgten. Da hier jedoch am Anfang nicht bekannt ist wie lang die Liste wird, muss man Seite für Seite solange holen,
+# bis der Server 'has_more' auf FALSE setzt. Mehrere Aufrufe hintereinander abzusetzen, wie das bei _paginGet() gemacht wird, ist also hier nicht möglich.
+# Für den Lyrion Server muss am Ende ohnehin eine komplette Liste bestehend aus allen angeforderten Seiten übergeben werden.
+# Ein echtes Paging wo das Holen der nächsten Seite von der Benutzeraktionen (scrollen oder sich seitenweise weiter bewegen) abhängt
+# scheint Lyrion oder das Qobuz-Plugin nicht zu unterstützen.
+# Es gibt zwei Parameter:
+# 'offset' gibt die Position an ab der gelesen wird.
+# 'limit' gibt die maximale Anzahl an Datensätzen an die eingelsen werden sollen. Der maximal Wert ist 50. Alle höheren Werte werden alle durch 50 ersetzt.
+# 'limit' kann auch weggelassen werden, dann wird auch automatische ein Wert von 50 angenommen.
+# falls das das GET Kommando eine Liste ohne den Wert has_more liefert wird nur ein _get() ausgeführt.
+sub _pagingGetMore {
+	my ( $self, $url, $cb, $params, $type ) = @_;
+	
+	my $limitTotal = $params->{limit} || QOBUZ_USERDATA_LIMIT;
+	$params->{limit}  = 50;
+	$params->{offset} =  0;
+	
+	my $cid = $params->{_cid};
+	my $collector = [];
+	my $offset = 0;
+	my $getCBFn;
+	
+	$getCBFn = sub {
+		$params->{offset} = $offset;
+		$params->{_cid} = $cid if ($cid);
+		
+		$self->_get($url, sub {
+			my $result = shift;
+					
+			if ($result) {
+				$result = $result->{$type} unless (exists $result->{has_more});
+			
+				push @$collector, @{$result->{items}} if $result->{items};
+				
+				main::DEBUGLOG && $log->is_debug && $log->debug("Need another page? " . Data::Dump::dump({
+					has_more => ($result->{has_more}) ? 'TRUE' : 'FALSE',
+					offset => $offset
+				}));
+				
+				if ($result->{has_more}) {
+					$offset += scalar @{$result->{items}};
+					if ($offset < $limitTotal) { 
+						$getCBFn->();  #nächste Seite holen
+						return;
+					}
+				}	
+			}
+			$cb->({ $type => { items => $collector } });
+		}, $params); 	
+	};	
+			
+	$getCBFn->();
 }
 
 sub aid { $aid }
