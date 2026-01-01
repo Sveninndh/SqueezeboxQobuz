@@ -191,10 +191,11 @@ sub search {
 	$args->{_ttl}  ||= QOBUZ_EDITORIAL_EXPIRY;
 	$args->{query} ||= $search;
 	$args->{type}  ||= $type if $type =~ /(?:albums|artists|tracks|playlists)/;
+	
 
 	$self->_pagingGet('catalog/search', sub {
 		my $results = shift;
-
+		
 		if ( !$args->{_dontPreCache} ) {
 			$self->_precacheArtistPictures($results->{artists}->{items}) if $results && $results->{artists};
 
