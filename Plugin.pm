@@ -1,5 +1,5 @@
 =head Infos
-Sven 2025-12-30 enhancements based on version 1.400 up to 3.6.6.6
+Sven 2026-01-04 enhancements based on version 1.400 up to 3.6.6.7
 
 This program is free software; you can redistribute it and/or label
 modify it under the terms of the GNU General Public License, version 2.
@@ -15,29 +15,27 @@ modify it under the terms of the GNU General Public License, version 2.
  5. added seeking inside flac files while playing
  6. added new preference 'FLAC 24 bits / 96 kHz (Hi-Res)'
  7. my prefered menu order in main menu
- 8. added "Album Information" if MusicArtistInfo plugin is installed.
- 9. added "Artist Information" if MusicArtistInfo plugin is installed.
-10. added a menu for a playlist item with the playlist, duration, title count, description,
+ 8 added a menu for a playlist item with the playlist, duration, title count, description,
           owner (if present), genres, release date, update date, similar playlists (if present)
-11. added subscribe/unsubscribe of playlist subscribtion
-12. added delete my own playlists
-13. added much more compatibility and useability with LMS favorites
-14. added a TrackMenu, you get it if you click on a track item and select the more... menu item, 2025-03-22
-15. added genre filter for user favorites, albums and playlists 2025-09-17, the previous genre menu is removed
-16. added albums of the week 2025-10-15 
-17. added Radio feature based on an album, artist or a track 2025-10-23 
-18. added Album suggestions based on an album 2025-10-25
-19. removed QobuzMyWeeklyQ(), No longer supported by Qobuz 25-11-02 (30.6.4)
-20. Completing the translations for Spanish.
-21. added new artist page, labels, awards.
-22. added new album list 'Release Radar' and 'Albums of the week'.
-23. added list of labels to explore
-24. added a list of all awards.
-25. added new awards page and labels page, awards and labels page are used now in the album page
-26. added new setting album view
-27. added new enhanced search 2025-12-28
-28. Consideration of has_more in releases on the artist page 2025-12-28
-29. added new search to global search 2025-12-29
+ 9. added subscribe/unsubscribe of playlist subscribtion
+10. added delete my own playlists
+11. added much more compatibility and useability with LMS favorites
+12. added a TrackMenu, you get it if you click on a track item and select the more... menu item, 2025-03-22
+13. added genre filter for user favorites, albums and playlists 2025-09-17, the previous genre menu is removed
+14. added albums of the week 2025-10-15 
+15. added Radio feature based on an album, artist or a track 2025-10-23 
+16. added Album suggestions based on an album 2025-10-25
+17. removed QobuzMyWeeklyQ(), No longer supported by Qobuz 25-11-02 (30.6.4)
+18. Completing the translations for Spanish.
+19. added new artist page, labels, awards.
+20. added new album list 'Release Radar' and 'Albums of the week'.
+21. added list of labels to explore
+22. added a list of all awards.
+23. added new awards page and labels page, awards and labels page are used now in the album page
+24. added new setting album view
+25. added new enhanced search 2025-12-28
+26. Consideration of has_more in releases on the artist page 2025-12-28
+27. added new search to global search 2025-12-29
 
 all changes are marked with "#Sven" in source code
 changed files: Common.pm, API.pm, Plugin.pm, ProtocolHandler.pm, Settings.pm, strings.txt and basic.html from .../Qobuz/HTML/EN/plugins/Qobuz/settings/basic.html
@@ -92,8 +90,6 @@ tie my %localizationTable, 'Tie::RegexpHash';
 %localizationTable = (
 	qr/^Livret Num.rique/i => 'PLUGIN_QOBUZ_BOOKLET'
 );
-
-my $IsMusicArtistInfo = 0; #Sven
 
 $prefs->init({
 	accounts => {},
@@ -294,16 +290,7 @@ sub postinitPlugin {
 
 		main::INFOLOG && $log->is_info && $log->info("Successfully registered BrowseArtist handler for Qobuz");
 	}
-
-	#Sven
-	if ( Slim::Utils::PluginManager->isEnabled('Plugins::MusicArtistInfo::Plugin') ) {
-		eval {
-			require Plugins::MusicArtistInfo::AlbumInfo;
-			require Plugins::MusicArtistInfo::ArtistInfo;
-		};
-		$IsMusicArtistInfo = 1;
-	}
-
+	
 }
 
 sub onlineLibraryNeedsUpdate {
@@ -2215,15 +2202,6 @@ sub QobuzGetTracks {
 
 		#Sven 2020-03-30
 		push @$items, { name => 'Copyright', items => [{ name => _stripHTML($album->{copyright}), type => 'textarea' }] } if $album->{copyright};
-
-#		if ($IsMusicArtistInfo) {
-#			push @$items, {
-#				name => cstring($client, 'PLUGIN_MUSICARTISTINFO_ALBUMINFO'),
-#				type => 'menu',
-#				#use AlbumInfo::getAlbumMenu() and not AlbumInfo->getAlbumMenu() to pass $client as first parameter. 
-#				items => Plugins::MusicArtistInfo::AlbumInfo::getAlbumMenu($client, undef, { album => { album => $album->{title}, artist => $artistname } })
-#			};	
-#		}
 
 		$item = trackInfoMenuBooklet($client, undef, undef, $album);
 		push @$items, $item if $item;
